@@ -31,11 +31,14 @@ still examined. Commas and semicolons inside a path or query are kept, and
 Results are in first-appearance order and de-duplicated on a normalised
 key (scheme ignored; userinfo, host and port lowercased; trailing
 punctuation removed; a bare ``/`` path dropped). ``url`` keeps the text as
-written; ``host`` is lowercased with userinfo, port, IPv6 brackets and a
-trailing dot removed, and is what every check compares.
+written; ``host`` is the parsed, canonical destination host under the
+policy below (userinfo, port, IPv6 brackets and a trailing dot removed,
+lowercase, Unicode mapped to its ASCII/``xn--`` form) and is what every
+check compares. ``host`` is NOT resolved, visited or verified.
 
-Host parsing follows browser (WHATWG) rules for http/https, implemented
-locally without any lookup:
+Host parsing follows a subset of browser (WHATWG URL) rules for
+http/https, implemented locally without any lookup; it is not a complete
+browser URL parser. Supported cases:
 
 * A backslash acts like ``/``: the authority (``userinfo@host:port``) ends
   at the first ``/``, ``\\``, ``?`` or ``#``, and backslashes in the path
@@ -55,6 +58,25 @@ locally without any lookup:
   more than 5 significant digits is rejected before conversion). An empty
   port (``host:``) counts as no port. A link with an invalid port
   (``:99999``, ``:-1``, ``:abc``) is dropped; other links are unaffected.
+* Unicode hosts get one canonical form, used by every comparison and
+  reported as ``host``: the ASCII / punycode (``xn--``) form that a
+  browser's URL parser would serialise. Mapping (standard library only):
+  U+3002, U+FF0E and U+FF61 act as dots; non-ASCII labels go through
+  Python's IDNA 2003 ``nameprep`` (NFKC, case folding) and ``ToASCII``.
+  So ``\uff41bcholdings.example`` (full-width a) and
+  ``abcholdings\u3002example`` are both ``abcholdings.example`` (no
+  mismatch / look-alike, but PUNYCODE still notes the unusual spelling),
+  while Cyrillic ``\u0430bcholdings.example`` stays a different destination
+  (``xn--bcholdings-yqi.example``). Look-alike and brand checks compare the
+  Unicode display form of each label. Configured official domains are
+  normalised the same way. A mapping that yields a forbidden character or
+  a dot (full-width ``／``, ``＠``, ``⒈``) rejects the link. Known
+  differences from full browser UTS #46 (IDNA 2008, current Unicode):
+  ``ß``/``ς`` are mapped to ``ss``/``σ`` (browsers keep them), zero-width
+  joiners are removed rather than validated, mapping tables are Unicode 3.2
+  so newer characters are passed through unmapped, IDNA 2008 contextual and
+  disallowed-character rules are not applied, ``xn--`` input labels are not
+  validated, and bare links (no scheme) need an ASCII ``.``.
 * Percent-encoded hosts are decoded exactly once, strictly (valid ``%XX``
   escapes and UTF-8 only), before validation: ``https://%65vil.example``
   is ``evil.example`` and ``http://%31%32%37.0.0.1`` is ``127.0.0.1``. A
@@ -123,9 +145,10 @@ link, company or offer is fraudulent.
 * ``FREE_HOSTING_FORM``: host is a free site builder / form service
   (``FREE_HOSTING_DOMAINS``; ``docs.google.com`` only when the path starts
   with ``/forms``).
-* ``PUNYCODE``: any host label starts with ``xn--`` or the host contains
-  non-ASCII characters (the reason shows the ``xn--`` form when the IDNA
-  codec can encode it).
+* ``PUNYCODE``: the host as written contains non-ASCII characters
+  (including full-width letters or Unicode dots that map to a plain ASCII
+  destination) or a canonical label starts with ``xn--``. The evidence comes
+  from the original spelling; the reason names the canonical destination.
 * ``MANY_SUBDOMAINS``: the host has ``MANY_SUBDOMAINS_MIN_LABELS`` (5) or
   more labels in total, e.g. ``a.b.c.d.example``.
 
@@ -178,10 +201,12 @@ Limitations
 
 from __future__ import annotations
 
+import encodings.idna as _idna
 import functools
 import ipaddress
 import json
 import re
+import unicodedata
 from urllib.parse import unquote, unquote_to_bytes
 from pathlib import Path
 
@@ -361,13 +386,74 @@ def _parse_ipv4(host: str) -> str | None:
     return str(ipaddress.IPv4Address(value))
 
 
-def _normalize_host(raw: str, bracketed: bool, strict_ipv4: bool) -> str | None:
-    """Return the canonical destination host, or None if it is invalid."""
+_DOT_EQUIVALENTS = {0x3002: ".", 0xFF0E: ".", 0xFF61: "."}
+
+
+def _map_unicode_host(host: str) -> str | None:
+    """Canonical (ASCII / A-label) form of a host, or None if invalid.
+
+    UTS #46-like mapping using only the standard library: the dot
+    equivalents U+3002, U+FF0E and U+FF61 become ".", then each non-ASCII
+    label goes through Python's IDNA 2003 ``nameprep`` (NFKC + case folding,
+    removal of some invisible characters, prohibited-character and bidi
+    checks) and ``ToASCII`` (punycode, 1-63 octets). A label whose mapping
+    produces a forbidden host character or a dot (e.g. fullwidth '／' or
+    '⒈') is rejected, so mapping can never change the URL structure.
+    Different scripts are never merged: Cyrillic 'а' stays distinct from
+    Latin 'a' (it becomes an xn-- label).
+    """
+    host = host.translate(_DOT_EQUIVALENTS)
+    if host.isascii():
+        return host.lower()
+    out = []
+    for label in host.split("."):
+        if label.isascii():
+            out.append(label.lower())
+            continue
+        try:
+            mapped = _idna.nameprep(label)
+        except UnicodeError:
+            return None
+        if not mapped or any(ch in _FORBIDDEN_HOST_CHARS or ch == "." for ch in mapped):
+            return None
+        if mapped.isascii():
+            out.append(mapped.lower())
+            continue
+        try:
+            out.append(_idna.ToASCII(mapped).decode("ascii").lower())
+        except UnicodeError:
+            return None
+    return ".".join(out)
+
+
+def _unicode_host(host: str) -> str:
+    """Display/compare form: xn-- labels decoded back to Unicode when valid."""
+    if "xn--" not in host:
+        return host
+    labels = []
+    for label in host.split("."):
+        if label.startswith("xn--"):
+            try:
+                label = _idna.ToUnicode(label)
+            except (UnicodeError, ValueError):
+                pass
+        labels.append(label)
+    return ".".join(labels)
+
+
+def _normalize_host(raw: str, bracketed: bool, strict_ipv4: bool) -> tuple[str, str] | None:
+    """Return (canonical_host, original_spelling) or None if invalid.
+
+    ``original_spelling`` is the percent-decoded, lowercased host as written
+    (kept as evidence for PUNYCODE); the canonical host is what every
+    comparison uses and what ``host`` reports.
+    """
     if bracketed:
         try:
-            return str(ipaddress.IPv6Address(raw)) if "%" not in raw else None
+            v6 = str(ipaddress.IPv6Address(raw)) if "%" not in raw else None
         except ValueError:
             return None
+        return (v6, v6) if v6 else None
     if "%" in raw:
         # Decode exactly once, strictly: every % must start a valid %XX
         # escape and the bytes must be valid UTF-8. The decoded host is then
@@ -381,16 +467,22 @@ def _normalize_host(raw: str, bracketed: bool, strict_ipv4: bool) -> str | None:
             return None
         if any(ch in _FORBIDDEN_HOST_CHARS for ch in raw):
             return None
-    host = raw.lower().rstrip(".")
+    original = raw.lower().rstrip(".")
+    mapped = _map_unicode_host(raw)
+    if mapped is None:
+        return None
+    host = mapped.rstrip(".")
     if not host:
         return None
     if _ends_in_number(host):
         if strict_ipv4:
             # Bare text (no scheme): only conventional dotted quads, so that
             # section numbers like 1.2/3 are not read as addresses.
-            return host if _DOTTED_QUAD.fullmatch(host) and _is_ip(host) else None
-        return _parse_ipv4(host)
-    return host if _valid_hostname(host) else None
+            ok = _DOTTED_QUAD.fullmatch(host) and _is_ip(host)
+            return (host, original) if ok else None
+        v4 = _parse_ipv4(host)
+        return (v4, original) if v4 else None
+    return (host, original) if _valid_hostname(host) else None
 
 
 _SCHEME_PREFIX_RE = re.compile(r"(https?):", re.IGNORECASE)
@@ -466,16 +558,19 @@ def _parse(display: str, has_scheme: bool) -> dict | None:
             port = _valid_port(port_text)
     if port is None:
         return None
-    host = _normalize_host(host, bracketed=hostport.startswith("["),
+    norm = _normalize_host(host, bracketed=hostport.startswith("["),
                            strict_ipv4=not has_scheme)
-    if host is None:
+    if norm is None:
         return None
+    host, original = norm
     return {
         "scheme": scheme if has_scheme else "",
         "netloc": authority,
         "has_at": bool(at),
         "userinfo": userinfo.lower(),
         "host": host,
+        "host_original": original,
+        "host_unicode": _unicode_host(host),
         "port": port,
         "path": path,
         "query": query,
@@ -705,11 +800,31 @@ def _check_apk_download(p: dict, ctx: dict) -> str | None:
 
 
 def _norm_company(name: str) -> str:
-    return " ".join(name.split()).casefold()
+    return " ".join(unicodedata.normalize("NFKC", name).split()).casefold()
 
 
 def _squash(name: str) -> str:
-    return "".join(ch for ch in name.casefold() if ch.isalnum())
+    return "".join(ch for ch in unicodedata.normalize("NFKC", name).casefold()
+                   if ch.isalnum())
+
+
+def _canonical_config_domain(domain: str) -> str | None:
+    """Normalise a configured official domain exactly like parsed hosts.
+
+    Entries with '%', forbidden characters, an invalid mapping, no dot, or a
+    numeric (IP-like) last label are ignored, so configuration can never
+    widen trust beyond a valid domain name.
+    """
+    d = domain.strip()
+    if not d or "%" in d or any(ch in _FORBIDDEN_HOST_CHARS for ch in d):
+        return None
+    mapped = _map_unicode_host(d)
+    if mapped is None:
+        return None
+    mapped = mapped.rstrip(".")
+    if "." not in mapped or _ends_in_number(mapped) or not _valid_hostname(mapped):
+        return None
+    return mapped
 
 
 @functools.lru_cache(maxsize=1)
@@ -726,8 +841,8 @@ def _official_domains() -> tuple:
     for name, domain in raw.items():
         if not (isinstance(name, str) and isinstance(domain, str)):
             continue
-        domain = domain.strip().lower().rstrip(".")
-        if name.strip() and _valid_hostname(domain) and "." in domain:
+        domain = _canonical_config_domain(domain)
+        if name.strip() and domain:
             out.append((_norm_company(name), _squash(name), domain))
     return tuple(sorted(out, key=lambda t: (t[2], t[0])))
 
@@ -742,7 +857,7 @@ def _official_index() -> tuple:
     if _INDEX["src"] is not entries:
         rows = []
         for _name, squashed, domain in entries:
-            label = _split_registrable(domain)[1]
+            label = _split_registrable(_unicode_host(domain))[1]
             tokens = tuple(sorted({t for t in (label, squashed) if len(t) >= BRAND_MIN_LEN}))
             rows.append((domain, label, tokens))
         _INDEX["rows"], _INDEX["src"] = tuple(rows), entries
@@ -829,7 +944,7 @@ def _check_claimed_company(p: dict, ctx: dict) -> str | None:
 def _check_lookalike(p: dict, ctx: dict) -> str | None:
     if _is_ip(p["host"]):
         return None
-    _sub, label, _suffix = _split_registrable(p["host"])
+    _sub, label, _suffix = _split_registrable(p["host_unicode"])
     if len(label) < LOOKALIKE_MIN_LEN:
         return None
     hits = []
@@ -853,9 +968,10 @@ def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
     host = p["host"]
     if _is_ip(host):
         return None
-    sub, label, _suffix = _split_registrable(host)
+    sub, label, _suffix = _split_registrable(p["host_unicode"])
     sub_squashed = [_squash(s) for s in sub]
     label_tokens = label.split("-")
+    _s, owner_label, owner_suffix = _split_registrable(host)
     hits = []
     for domain, _label, tokens in _official_index():
         if _on_domain(host, domain):
@@ -865,7 +981,7 @@ def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
                 hits.append(f"'{tok}' ({domain})")
                 break
     if hits:
-        owner = f"{label}.{_suffix}" if _suffix else label
+        owner = f"{owner_label}.{owner_suffix}" if owner_suffix else owner_label
         return (f"The company name {', '.join(hits)} appears inside a "
                 f"different website name ({host}). That site is controlled by "
                 f"whoever owns '{owner}', not necessarily the company; "
@@ -889,23 +1005,27 @@ def _check_free_hosting(p: dict, ctx: dict) -> str | None:
 
 
 def _check_punycode(p: dict, ctx: dict) -> str | None:
-    host = p["host"]
-    labels = host.split(".")
-    if any(label.startswith("xn--") for label in labels):
+    host, original, uni = p["host"], p["host_original"], p["host_unicode"]
+    has_ace = any(label.startswith("xn--") for label in host.split("."))
+    if not original.isascii() and not has_ace:
+        # Written with full-width letters, Unicode dots, etc. that map to a
+        # plain ASCII destination.
+        return ("The website name is written with unusual characters "
+                f"('{original}'); under standard name normalisation the "
+                f"destination is {host}. Real links rarely need this spelling, "
+                "and it can be used to make a name look different from where "
+                "it goes, so check it carefully.")
+    if not original.isascii():
+        return ("The website name contains non-English characters "
+                f"('{uni}'; canonical destination {host}). This is normal for "
+                "some local-language sites, but some of these letters look "
+                "identical to English ones and can imitate a familiar name.")
+    if has_ace:
+        shown = f", displayed as '{uni}'" if uni != host else ""
         return ("The website name uses the encoded form of international "
-                f"letters ('{host}'). This is normal for non-English names, but "
-                "such letters can also look identical to a familiar English "
-                "name, so check the spelling carefully.")
-    if not host.isascii():
-        try:
-            encoded = host.encode("idna").decode("ascii")
-            shown = f" (encoded: {encoded})"
-        except (UnicodeError, ValueError):
-            shown = " (could not be converted to its encoded form)"
-        return ("The website name contains non-English characters"
-                f"{shown}. This is normal for some local-language sites, but "
-                "some of these letters look identical to English ones and can "
-                "imitate a familiar name.")
+                f"letters ('{host}'{shown}). This is normal for non-English "
+                "names, but such letters can also look identical to a familiar "
+                "English name, so check the spelling carefully.")
     return None
 
 

@@ -374,9 +374,12 @@ def test_punycode_xn_label():
 
 def test_non_ascii_host_is_punycode_and_lookalike():
     r = one("Visit https://\u0430bcholdings.example/login today")  # Cyrillic a
-    assert r["host"] == "\u0430bcholdings.example"
+    # canonical-host policy (round 3): host is the A-label form; the Unicode
+    # spelling is still shown in the PUNYCODE reason.
+    assert r["host"] == "xn--bcholdings-yqi.example"
     assert codes(r) == ["LOOKALIKE", "PUNYCODE"]
-    assert "xn--" in r["flags"][1]["reason"]
+    assert "xn--bcholdings-yqi.example" in r["flags"][1]["reason"]
+    assert "\u0430bcholdings.example" in r["flags"][1]["reason"]
 
 
 def test_many_subdomains_threshold():
@@ -514,7 +517,9 @@ def test_malformed_or_structure_changing_encodings_are_dropped(url):
 
 def test_percent_encoded_unicode_host_still_punycode():
     r = one("https://%D0%B0bcholdings.example/login")  # Cyrillic a
-    assert r["host"] == "\u0430bcholdings.example"
+    # canonical-host policy (round 3): host is the A-label form; the Unicode
+    # spelling is still shown in the PUNYCODE reason.
+    assert r["host"] == "xn--bcholdings-yqi.example"
     assert codes(r) == ["LOOKALIKE", "PUNYCODE"]
 
 
@@ -778,7 +783,7 @@ EVAL_CASES = [
     ("E6", "encoded", "https://xn--abchldings-abc.example/", None, None,
      [("https://xn--abchldings-abc.example/", "xn--abchldings-abc.example", [PUNY])], "punycode label", False),
     ("E7", "encoded", "https://\u0430bcholdings.example/", None, None,
-     [("https://\u0430bcholdings.example/", "\u0430bcholdings.example", [LOOK, PUNY])],
+     [("https://\u0430bcholdings.example/", "xn--bcholdings-yqi.example", [LOOK, PUNY])],
      "Cyrillic letter imitating the brand", False),
     ("E8", "encoded", r"https://evil.example\@abcholdings.example/login", ABC, None,
      [(r"https://evil.example\@abcholdings.example/login", "evil.example", [MIS])],
@@ -1108,3 +1113,93 @@ def test_bad_port_does_not_block_other_links():
     res = check_urls("https://abcholdings.example:99999/login, then "
                      "abc-jobs.example:123456/x and https://bit.ly/x plus abc-jobs.example:8080/ok")
     assert [r["url"] for r in res] == ["https://bit.ly/x", "abc-jobs.example:8080/ok"]
+
+
+# ------------------------------- round 3: canonical Unicode hosts (Fix 2) ----
+
+@pytest.mark.parametrize("url", [
+    "https://\uff41bcholdings.example/login",          # full-width a (reproducer A)
+    "https://abcholdings\u3002example/login",          # ideographic full stop (B)
+    "https://abcholdings\uff0eexample/login",          # full-width full stop
+    "https://abcholdings\uff61example/login",          # half-width ideographic stop
+    "https://abcholdings.example\u3002/login",         # trailing Unicode dot
+    "https://\uff21\uff22\uff23\uff28\uff2f\uff2c\uff24\uff29\uff2e\uff27\uff33\uff0e\uff25\uff38\uff21\uff2d\uff30\uff2c\uff25/login",
+    "https://%EF%BD%81bcholdings.example/login",      # percent-encoded full-width a
+    "https://abcholdings%E3%80%82example/login",      # percent-encoded U+3002
+])
+def test_width_and_dot_equivalents_map_to_official_host(url):
+    r = one(url, ABC)
+    assert r["url"] == url
+    assert r["host"] == "abcholdings.example"
+    assert codes(r) == ["PUNYCODE"]           # unusual spelling noted ...
+    assert "destination is abcholdings.example" in r["flags"][0]["reason"]
+    assert r["risk"] == "medium"              # ... but no mismatch / look-alike
+
+
+def test_equivalent_official_subdomain_and_claimed_name_forms():
+    r = one("https://\uff43\uff41\uff52\uff45\uff45\uff52\uff53.abcholdings.example/", "\uff21\uff22\uff23\u3000Holdings")
+    assert r["host"] == "careers.abcholdings.example"
+    assert "CLAIMED_COMPANY_MISMATCH" not in codes(r) and "LOOKALIKE" not in codes(r)
+
+
+def test_cyrillic_confusable_is_not_merged_with_latin():
+    r = one("https://\u0430bcholdings.example/login", ABC)
+    assert r["host"] == "xn--bcholdings-yqi.example"
+    assert codes(r) == ["CLAIMED_COMPANY_MISMATCH", "LOOKALIKE", "PUNYCODE"]
+    r = one("https://xn--bcholdings-yqi.example/login", ABC)
+    assert codes(r) == ["CLAIMED_COMPANY_MISMATCH", "LOOKALIKE", "PUNYCODE"]
+    assert "displayed as '\u0430bcholdings.example'" in r["flags"][2]["reason"]
+
+
+def test_unicode_and_ascii_spellings_dedupe_to_first_appearance():
+    res = check_urls("https://\uff41bcholdings.example/x then https://abcholdings.example/x")
+    assert [r["url"] for r in res] == ["https://\uff41bcholdings.example/x"]
+    res = check_urls("https://\u0430bcholdings.example/ and https://xn--bcholdings-yqi.example/")
+    assert [r["url"] for r in res] == ["https://\u0430bcholdings.example/"]
+    res = check_urls("https://\u0430bcholdings.example/ and https://abcholdings.example/")
+    assert len(res) == 2  # different destinations stay separate
+
+
+@pytest.mark.parametrize("url", [
+    "https://evil.example\uff0fabcholdings.example/",   # full-width solidus -> '/'
+    "https://evil.example\uff20abcholdings.example/",   # full-width @
+    "https://abcholdings.example\uff1a443/",            # full-width colon
+    "https://evil.example%EF%BC%8Fabcholdings.example/",  # encoded full-width solidus
+    "https://\u2488abcholdings.example/",               # maps to '1.' (adds a dot)
+    "https://abcholdings\u3002\u3002example/",          # empty label
+    "https://abc\u0080holdings.example/",               # prohibited control char
+    "https://" + "\u00e9" * 70 + ".example/",           # label too long after punycode
+])
+def test_invalid_or_structure_changing_normalisation_is_rejected(url):
+    assert check_urls(url, ABC) == []
+
+
+def test_unicode_digits_and_service_hosts_use_canonical_form():
+    r = one("http://\uff11\uff12\uff17.\uff10.\uff10.\uff11/x")
+    assert r["host"] == "127.0.0.1" and codes(r)[0] == "IP_HOST"
+    r = one("https://\uff42\uff49\uff54.\uff4c\uff59/x")
+    assert r["host"] == "bit.ly" and codes(r) == ["SHORTENER", "PUNYCODE"]
+
+
+def test_documented_idna2003_difference_sharp_s():
+    # Python's IDNA 2003 nameprep maps ß to ss; browsers (UTS #46
+    # non-transitional) keep it. Pinned here because it is documented.
+    assert one("https://stra\u00dfe.example/")["host"] == "strasse.example"
+
+
+def test_config_entries_use_the_same_normalisation(mapping_path, tmp_path):
+    f = tmp_path / "m.json"
+    f.write_text(json.dumps({
+        "ABC Holdings": "\uff21\uff22\uff23\uff28\uff2f\uff2c\uff24\uff29\uff2e\uff27\uff33.example",
+        "Slash Co": "slash.example/evil", "Pct Co": "%61bc.example", "Ip Co": "198.51.100.7",
+        "At Co": "a@b.example", "Colon Co": "colon.example:80", "Dot Co": "kandy\u3002example",
+    }), encoding="utf-8")
+    mapping_path(f)
+    assert [d for _n, _s, d in links._official_domains()] == ["abcholdings.example", "kandy.example"]
+    assert codes(one("https://abcholdings.example/", ABC)) == []
+    # invalid entries are ignored entirely: the company is then unknown, so
+    # the company check is skipped (nothing is trusted or "verified")
+    assert codes(one("https://slash.example/evil", "Slash Co")) == []
+    assert codes(one("https://198.51.100.7/", "Ip Co")) == ["IP_HOST"]
+    assert codes(one("https://kandy.example/", "Dot Co")) == []
+    assert codes(one("https://other.example/", "Dot Co")) == ["CLAIMED_COMPANY_MISMATCH"]
