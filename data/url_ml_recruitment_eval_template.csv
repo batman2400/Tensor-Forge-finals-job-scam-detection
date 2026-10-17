@@ -1,0 +1,6 @@
+url,category,label,evidence_source,reviewer,date,notes
+https://careers.abcholdings.example/jobs/1234/apply,application_portal,synthetic_functional_check,synthetic_functional_check,,,"Fictional .example row for pipeline checks only; not a real-world label"
+https://meet.lankatalent.example/interview/abc-xyz,interview_link,synthetic_functional_check,synthetic_functional_check,,,"Fictional .example row; expected url_ml status not_evaluated (reserved domain)"
+https://forms.ceylondigital.example/apply-now,hosted_form,synthetic_functional_check,synthetic_functional_check,,,"Fictional .example row"
+https://short.example/r4nd0m,shortener,synthetic_functional_check,synthetic_functional_check,,,"Fictional .example row"
+http://abc-holdings-hr-pay.example/fee,malicious_recruitment,synthetic_functional_check,synthetic_functional_check,,,"Fictional .example row; do not treat as evidence"

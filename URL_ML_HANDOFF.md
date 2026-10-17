@@ -226,3 +226,76 @@ def links_analyze(req: AnalyzeRequest):
   - The section 6 verification on the integrated app.
 
   This document is implementation guidance; it does not claim any of those changes have been made.
+
+## 8. Validation error analysis (shipped default model, validation only)
+
+Produced by `scripts/analyze_url_errors.py`, which never reads `test.jsonl`.
+- **Model:** `urlml-lr-char35-168566-202610171216`, threshold 0.626499.
+- **Data:** the original validation partition (built-in suffix grouping), n = 21,996.
+- **Outcomes:** 263 false positives (of 13,549 legitimate rows), 3,440 false negatives (of 8,447 phishing rows), 13,286 true negatives, 5,007 true positives.
+- **Method:** categories are deterministic heuristics on the host text. A row can fall in several categories. `plain_dictionary_like_host` means none of the others apply and the registrable label is alphabetic.
+
+| Category | FP (of 263) | FN (of 3,440) | TN (of 13,286) | TP (of 5,007) |
+|---|---|---|---|---|
+| ip_host | 0 | 0 | 0 | 16 |
+| punycode_idn | 0 | 0 | 0 | 11 |
+| platform_or_shared_hosting (subdomain of e.g. blogspot/github.io/web.app) | 0 | 164 (4.8%) | 0 | 636 |
+| uncommon_tld | 80 (30.4%) | 265 (7.7%) | 813 (6.1%) | 2,567 |
+| long_or_digit_heavy_host | 20 (7.6%) | 460 (13.4%) | 122 | 2,214 |
+| many_subdomains (≥4 labels) | 1 | 82 | 224 | 1,270 |
+| hyphen_heavy (≥2 hyphens) | 4 | 133 | 113 | 726 |
+| brand_or_lure_token | 12 (4.6%) | 57 | 75 | 368 |
+| plain_dictionary_like_host | 117 (44.5%) | 2,182 (63.4%) | 10,992 | 545 |
+
+**Reading:**
+- Most misses (63%) are phishing hosts that look like ordinary words. A host-only character model cannot separate these from legitimate sites, so path, page or reputation signals would be needed.
+- False alarms are dominated by plain hosts (45%) and uncommon TLDs (30%). Uncommon TLDs make up 6% of correctly passed legitimate rows, so the model leans on the TLD.
+- Every shared-hosting subdomain in validation is phishing: 0 legitimate rows fall in that category. That is another dataset shortcut, and real hosted job forms would be penalised.
+
+## 9. Full Public Suffix List grouping (split rebuild; shipped model unchanged)
+
+- **Source:** `https://publicsuffix.org/list/public_suffix_list.dat` (MPL-2.0), retrieved 2026-10-17 12:57 Asia/Colombo, sha256 `b43e0e238914ff7c50f5f9356aca4996e763a77b129cdb059b27538ad1668ac8`. Stored outside git in `/workspace/url_ml_data/psl/`.
+- **Usage:** `scripts/prepare_url_data.py --psl <path>` uses it offline. It applies normal, wildcard and exception rules, with IDN rules converted to xn--. Without `--psl`, the built-in list is still used.
+- **Rebuilt splits:** `/workspace/url_ml_data/prepared_psl/`, same seed and 80/10/10.
+
+| | Train | Val | Test |
+|---|---|---|---|
+| Rows | 175,169 | 22,020 | 20,852 |
+| Domains | 157,320 | 19,833 | 19,561 |
+
+- **Changes vs the old split** (218,041 rows, same rows kept):
+  - 28,221 rows changed group and 14,281 rows changed partition.
+  - Old groups: 171,328 → new groups: 196,714. 1,204 old groups changed and 579 old groups were split. No new group merges old groups, so the PSL is strictly finer here: e.g. a shared-hosting suffix becomes one group per customer site.
+  - Partition transitions: test→train 7,488, val→train 2,320, train→val 1,670, train→test 1,535, test→val 971, val→test 297.
+- **Overlap checks:**
+  - New split: 0 shared domains for train&val, train&test and val&test.
+  - The old split, regrouped under the PSL key, also had 0 cross-partition overlaps, so the old split did not leak at PSL granularity.
+  - 375 old built-in groups now span several partitions; that is expected from the finer grouping.
+- **Caveat:** the new test partition contains 19,020 rows that were in the old, already-examined test partition, and the new validation partition contains 971. **Neither is a fresh test set.**
+- **Validation-only experiment, NOT the shipped model.** A model retrained on the PSL train split (175,169 rows, C = 4 chosen on validation) was never scored on test (`--no-test`). It is stored outside the repo in `/workspace/url_ml_data/runs/psl_full_valonly/`.
+  - Validation at precision ≥ 0.95 (threshold 0.6069): precision 0.950 (5,681/5,980), recall 0.667 (5,681/8,519), false-positive rate 0.0221 (299/13,501), PR-AUC 0.908.
+  - It is not directly comparable with the shipped model's validation numbers, because the validation partition changed.
+
+## 10. Next version plan
+
+1. **Dataset shortcut.** In PhiUSIIL every legitimate URL is `https://www.<domain>` with no path, and validation shows shared hosting appears only in phishing rows. The current model is therefore host-only, and it still learns TLD and host-shape shortcuts (section 8).
+2. **Independent legitimate data is required.** We need independently labelled legitimate URLs with paths, subdomains, hosted forms and recruitment portals (applicant-tracking pages, careers subdomains, interview links). Candidate sources, **licences to be checked before use**:
+   - Common Crawl URL index: real paths; terms of use apply.
+   - Tranco top list: **domains only, no paths**, so it can only support host-level negatives.
+   - PhishTank / OpenPhish for fresh phishing: redistribution and commercial-use restrictions; check the current terms.
+   - Team-collected recruitment links with documented consent and evidence.
+3. **Full-URL vs host-only.** Once legitimate data with paths exists, compare full-URL and host-only models on the same grouped splits, with the threshold chosen on validation.
+4. **Recruitment-focused evaluation set.** Use the template `data/url_ml_recruitment_eval_template.csv`, with columns `url, category, label, evidence_source, reviewer, date, notes`.
+   - Categories: `application_portal`, `interview_link`, `hosted_form`, `shortener`, `malicious_recruitment`.
+   - The template rows are fictional `.example` URLs labelled `synthetic_functional_check`, for pipeline checks only.
+   - **No real-world labels have been fabricated.** Real rows need an evidence source and a named reviewer.
+5. **Fresh test set.** Reserve a fresh, untouched test set for the next version and freeze it before any training.
+   - The current PhiUSIIL test partition was examined across several experiments: the full-URL pilot, the host-only 5k/20k/full runs, and two threshold targets. Report it only as "previously examined".
+   - The PSL re-split's test partition overlaps it heavily (section 9).
+6. **Threshold changes trade recall for false alarms; they do not improve the model.** Shipped model, validation only:
+
+| Precision target | Threshold | Precision | Recall | False-positive rate |
+|---|---|---|---|---|
+| 0.90 | 0.4735 | 0.900 (5,946/6,606) | 0.704 (5,946/8,447) | 0.0487 (660/13,549) |
+| 0.95 (shipped) | 0.6265 | 0.950 (5,007/5,270) | 0.593 (5,007/8,447) | 0.0194 (263/13,549) |
+| 0.99 | 0.8698 | 0.990 (2,973/3,003) | 0.352 (2,973/8,447) | 0.0022 (30/13,549) |
