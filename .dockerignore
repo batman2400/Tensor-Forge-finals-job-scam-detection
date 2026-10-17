@@ -1,0 +1,10 @@
+.venv
+.git
+.env
+logs
+artifacts
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.DS_Store

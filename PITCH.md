@@ -29,9 +29,7 @@ Use the two files in `data/demo/`. Both are synthetic.
 1. Paste `legit_recruitment.txt`. Read the verdict the screen actually shows. If it says no strong scam signal, add that this is not a verification.
 2. Reveal `task_scam.txt` one message at a time, or paste the whole chat and walk the timeline. Say whether the score rose when the deposit and the pay-to-withdraw lines appeared. Do not promise that it will. Mention the highlighted phrases. If the link checker is on, the Bright Path link should show `CLAIMED_COMPANY_MISMATCH` because it is not on `brightpath.example`.
 3. Monitoring tab: replay the **test** batch. Say that this replay is a control. It is logged and it is not sent to review, so it cannot be used to retrain.
-4. Replay the **shifted** stream (new pretexts and more Singlish, including legitimate Singlish chats). Say what the banner actually does: whether chosen-side score fell, unfamiliar rate rose, or an alert fired. Uncertain shifted rows may sit in the review queue. Label one only if we are showing the stretch retrain. Otherwise stop at the queue.
-
-If the shifted replay does not fire an alert, say so. The thresholds stay as frozen. We do not lower the window on stage.
+4. Replay the **shifted** stream (new pretexts and more Singlish, including legitimate Singlish chats). On the finished TF-IDF model the banner stayed off: chosen-side score 86% against a reference of 86%, unfamiliar rate 2% against 5%, uncertain rate 0% against 3%. Six of the 80 chats the button sends were waiting in the review queue. Say that. Do not lower the window on stage. Label one only if we are showing the stretch retrain. Otherwise stop at the queue.
 
 ## 4. How it is built — 1 to 2 minutes
 

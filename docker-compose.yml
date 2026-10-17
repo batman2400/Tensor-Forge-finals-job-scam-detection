@@ -1,0 +1,46 @@
+# API and UI share one image. The model is trained when that image is built.
+services:
+  api:
+    image: scamshield:local
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_KIND: tfidf
+      ENABLE_LINK_CHECK: "true"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  ui:
+    image: scamshield:local
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://api:8000
+      MODEL_KIND: tfidf
+      ENABLE_LINK_CHECK: "true"
+    command:
+      [
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.address",
+        "0.0.0.0",
+        "--server.port",
+        "8501",
+        "--server.headless",
+        "true",
+      ]
+    depends_on:
+      api:
+        condition: service_healthy

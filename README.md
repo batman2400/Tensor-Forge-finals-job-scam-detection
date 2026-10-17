@@ -41,7 +41,15 @@ uv run streamlit run ui/app.py
 
 Open the Streamlit URL it prints (port 8501). Health check: `http://127.0.0.1:8000/health`.
 
-There is no container in this repo yet. These `uv` commands are the supported start path. `uv.lock` pins the dependency set that `uv sync` installs.
+`uv.lock` pins the dependency set that `uv sync` installs. These `uv` commands are the start path when Docker is not running.
+
+Container start, from this same directory. The image trains the TF-IDF model from `data/processed` while it builds. It does not read a Gemini key and it does not install the embedding model.
+
+```powershell
+docker compose up --build
+```
+
+Open `http://127.0.0.1:8501`. Health check: `http://127.0.0.1:8000/health`. The UI container calls the API at `http://api:8000`. Stop with `docker compose down`.
 
 Checks that do not need a finished dataset:
 
@@ -178,6 +186,8 @@ Drift uses the last 40 predictions from the current model version only, compared
 The window needs at least 15 predictions. The UI then shows an alert banner.
 
 Response today: the banner, and uncertain or unfamiliar live chats and shifted-stream replays go to the review queue. While a drift alert is active, chats at or above `DRIFT_FALLBACK_THRESHOLD` (0.20) also go to review.
+
+The shifted-stream button was replayed on `tfidf-20261017T054258` after the log was cleared. It sends 80 of the 97 stream chats. The last 40 did not raise a drift alert: mean chosen-side score 0.86 against a reference of 0.86, unfamiliar rate 2% against 5%, and uncertain rate 0% against 3%. Six of those 80 chats went to the review queue (five unfamiliar, one uncertain). Scoring the remaining 17 the same way still did not raise an alert. The thresholds were not changed after this replay.
 
 The test replay is a monitoring control. Those rows are logged and are not queued, and they cannot be labelled into a later retrain. Retrain (`POST /retrain`) is optional. It keeps the previous file as `artifacts/model_prev.joblib`. It has not been run on the finished data.
 
