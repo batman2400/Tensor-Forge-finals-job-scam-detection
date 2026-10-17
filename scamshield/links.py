@@ -63,7 +63,9 @@ Flags (stable order = order of checks below)
 * ``SHORTENER``: host is a known link shortener (``SHORTENER_DOMAINS``).
 * ``CHAT_REDIRECT``: link opens a Telegram/WhatsApp chat (``CHAT_DOMAINS``).
 * ``APK_DOWNLOAD``: path ends with ``.apk`` or path/query mentions an
-  ``.apk`` file (case-insensitive; fragment ignored).
+  ``.apk`` file (case-insensitive; fragment ignored). Path and query are
+  checked raw and after one percent-decoding pass (depth 1), so
+  ``task%2Eapk`` and ``task.%61pk`` match; double encoding does not.
 * ``CLAIMED_COMPANY_MISMATCH``: ``claimed_company`` maps (case-insensitive,
   whitespace-normalised name) to an official domain and the host is neither
   that domain nor a genuine subdomain. Skipped if the company is unknown or
@@ -117,6 +119,10 @@ Limitations
 * Brand detection inside a registrable label only matches whole hyphen
   tokens (``notabcholdings.example`` is caught only by
   ``CLAIMED_COMPANY_MISMATCH`` when a company is claimed).
+* Browser-style parsing covers backslashes, numeric IPv4 and percent-encoded
+  hosts for ``http``/``https`` only; other schemes are not extracted.
+  Hosts and paths are percent-decoded only once (deeper encodings are not
+  unwrapped). Glued URLs are split only at ``,`` and ``;``.
 """
 
 from __future__ import annotations
@@ -125,7 +131,7 @@ import functools
 import ipaddress
 import json
 import re
-from urllib.parse import unquote_to_bytes
+from urllib.parse import unquote, unquote_to_bytes
 from pathlib import Path
 
 __all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH",
@@ -475,7 +481,10 @@ def _check_chat_redirect(p: dict, ctx: dict) -> str | None:
 
 
 def _check_apk_download(p: dict, ctx: dict) -> str | None:
-    if _APK_RE.search(p["path"]) or _APK_RE.search(p["query"]):
+    # Raw text plus ONE percent-decoding pass (decoding depth 1, so
+    # "%2Eapk" and ".%61pk" are caught; "%252Eapk" is not). Fragment ignored.
+    texts = (p["path"], p["query"], unquote(p["path"]), unquote(p["query"]))
+    if any(_APK_RE.search(t) for t in texts):
         return ("The link appears to download an Android app file (.apk) "
                 "from outside an app store; such files can install unwanted "
                 "software.")

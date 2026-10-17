@@ -540,3 +540,24 @@ def test_commas_semicolons_and_nested_url_in_query_are_kept():
     assert [r["url"] for r in check_urls(text)] == [
         "https://portal.example/a,b;c?x=1,2;y=3&next=https://other.example/z",
         "https://wiki.example/page_(info)"]
+
+
+@pytest.mark.parametrize("url", ["https://downloads.example/task%2Eapk",
+                                 "https://downloads.example/get?file=task%2Eapk",
+                                 "https://downloads.example/task%2eapk",
+                                 "https://downloads.example/task.%61pk",
+                                 "https://downloads.example/task%2E%41%50%4B",
+                                 "https://downloads.example/get?f=task.%61%70%6b&v=2",
+                                 "https://downloads.example/task.apk"])
+def test_encoded_apk_filenames_are_flagged(url):
+    r = one(url)
+    assert codes(r) == ["APK_DOWNLOAD"]
+    assert r["risk"] == "medium"
+
+
+@pytest.mark.parametrize("url", ["https://downloads.example/page#task%2Eapk",
+                                 "https://downloads.example/apkpure-guide",
+                                 "https://downloads.example/task%2Eapkg",
+                                 "https://downloads.example/task%252Eapk"])
+def test_apk_fragment_word_and_double_encoding_not_flagged(url):
+    assert codes(one(url)) == []
