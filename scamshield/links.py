@@ -51,6 +51,10 @@ locally without any lookup:
   leading zeros alone never make a part invalid. A host whose last label is numeric but
   is not a valid address is rejected. Bare links (no scheme) only accept
   conventional dotted-quad IPv4 such as ``198.51.100.7/login``.
+* Ports must be ASCII digits with a value 0..65535 (leading zeros allowed;
+  more than 5 significant digits is rejected before conversion). An empty
+  port (``host:``) counts as no port. A link with an invalid port
+  (``:99999``, ``:-1``, ``:abc``) is dropped; other links are unaffected.
 * Percent-encoded hosts are decoded exactly once, strictly (valid ``%XX``
   escapes and UTF-8 only), before validation: ``https://%65vil.example``
   is ``evil.example`` and ``http://%31%32%37.0.0.1`` is ``127.0.0.1``. A
@@ -253,7 +257,7 @@ _URL_RE = re.compile(
     |
     (?P<bare>(?<![\w@.\-/:%+])
         (?:[^\W_][\w-]*\.)+[^\W_][\w-]*      # dotted host
-        (?::\d{1,5})?                         # optional port
+        (?::[0-9]+)?                          # optional port (validated later)
         (?:[/?\#][^\s<>"'`]*)?                # optional path/query/fragment
     )
     """,
@@ -413,6 +417,30 @@ def _split_url(url: str) -> tuple[str, str, str, str, str] | None:
     return scheme, authority, path.replace("\\", "/"), query, fragment
 
 
+_PORT_RE = re.compile(r"[0-9]*")
+MAX_PORT = 65535
+
+
+def _valid_port(text: str) -> str | None:
+    """Return the canonical port ("" if empty) or None if invalid.
+
+    ASCII digits only, value 0..65535 (port 0 is accepted by URL parsing,
+    whether a browser connects to it is a different question). Leading
+    zeros are allowed and stripped; more than 5 significant digits is
+    rejected before int() so very long ports cannot raise. An empty port
+    (``host:``) is treated like no port, as in browsers.
+    """
+    if not _PORT_RE.fullmatch(text):
+        return None
+    digits = text.lstrip("0")
+    if not text:
+        return ""
+    if len(digits) > 5:
+        return None
+    value = int(digits or "0")
+    return str(value) if value <= MAX_PORT else None
+
+
 def _parse(display: str, has_scheme: bool) -> dict | None:
     """Split a candidate into parts; return None if it is not a usable URL."""
     split = _split_url(display if has_scheme else "http://" + display)
@@ -424,14 +452,20 @@ def _parse(display: str, has_scheme: bool) -> dict | None:
         end = hostport.find("]")
         if end == -1:
             return None
-        host, port = hostport[1:end], hostport[end + 1:]
-        if port and not (port.startswith(":") and port[1:].isdigit()):
+        host, after = hostport[1:end], hostport[end + 1:]
+        if after and not after.startswith(":"):
             return None
-        port = port[1:]
+        port = _valid_port(after[1:]) if after else ""
     else:
-        host, sep, port = hostport.rpartition(":")
-        if not sep or not (port.isdigit() or port == ""):
+        host, sep, port_text = hostport.rpartition(":")
+        if not sep:
             host, port = hostport, ""
+        else:
+            # Anything after the last ':' must be a valid port; otherwise
+            # the candidate is rejected (a ':' is never valid in a host).
+            port = _valid_port(port_text)
+    if port is None:
+        return None
     host = _normalize_host(host, bracketed=hostport.startswith("["),
                            strict_ipv4=not has_scheme)
     if host is None:

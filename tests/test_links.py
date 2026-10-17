@@ -1074,3 +1074,37 @@ def test_numeric_boundaries_and_leading_zeros(host, canon):
         assert res == []
     else:
         assert res[0]["host"] == canon and "IP_HOST" in codes(res[0])
+
+
+# ------------------------------------------ round 3: port range (Fix 3) ----
+
+def test_reviewer_port_reproducer_rejected():
+    assert check_urls("https://abcholdings.example:99999/login", ABC) == []
+
+
+@pytest.mark.parametrize("hostport,port_ok", [
+    ("abcholdings.example:65535", True), ("abcholdings.example:65536", False),
+    ("abcholdings.example:99999", False), ("abcholdings.example:0", True),
+    ("abcholdings.example:", True), ("abcholdings.example:-1", False),
+    ("abcholdings.example:80a", False), ("abcholdings.example:" + "9" * 5000, False),
+    ("abcholdings.example:" + "0" * 5000 + "443", True), ("abcholdings.example:\u0661\u0662", False),
+    ("abcholdings.example:8443", True), ("198.51.100.7:65536", False), ("198.51.100.7:8080", True),
+    ("[2001:db8::1]:65535", True), ("[2001:db8::1]:65536", False), ("[2001:db8::1]:", True),
+    ("[2001:db8::1]:x", False), ("[2001:db8::1]80", False), ("[2001:db8::1]:" + "1" * 400, False),
+])
+def test_port_validation(hostport, port_ok):
+    res = check_urls(f"https://{hostport}/login")
+    assert (len(res) == 1) is port_ok, res
+
+
+def test_port_is_canonical_and_dedupes():
+    res = check_urls("https://portal.example:0080/a https://portal.example:80/a https://portal.example:/b")
+    assert [r["url"] for r in res] == ["https://portal.example:0080/a", "https://portal.example:/b"]
+    assert links._parse("https://portal.example:0080/a", True)["port"] == "80"
+    assert links._parse("https://portal.example:/a", True)["port"] == ""
+
+
+def test_bad_port_does_not_block_other_links():
+    res = check_urls("https://abcholdings.example:99999/login, then "
+                     "abc-jobs.example:123456/x and https://bit.ly/x plus abc-jobs.example:8080/ok")
+    assert [r["url"] for r in res] == ["https://bit.ly/x", "abc-jobs.example:8080/ok"]
