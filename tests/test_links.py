@@ -990,3 +990,29 @@ def test_output_shape_identical_when_mapping_unavailable(mapping_path, tmp_path)
     assert [set(r) for r in with_map] == [set(r) for r in without]
     assert [r["url"] for r in with_map] == [r["url"] for r in without]
     assert codes(without[0]) == [] and codes(with_map[0]) != []
+
+
+# ------------------------------------------- Step 6 optimisation checks ----
+
+def test_bounded_levenshtein_matches_full_computation():
+    import random
+    rng = random.Random(7)
+    for _ in range(3000):
+        a = "".join(rng.choice("abch1o-") for _ in range(rng.randint(0, 12)))
+        b = "".join(rng.choice("abch1o-") for _ in range(rng.randint(0, 12)))
+        full = links._levenshtein(a, b)
+        assert links._levenshtein(a, b, 2) == (full if full <= 2 else 3)
+
+
+def test_precomputed_index_follows_mapping_reload(mapping_path, tmp_path):
+    f = tmp_path / "m.json"
+    f.write_text('{"Galle Fort Careers": "gallefort.example"}')
+    mapping_path(f)
+    assert "LOOKALIKE" in codes(one("https://ga1lefort.example/"))
+    assert "BRAND_IN_SUBDOMAIN" in codes(one("https://gallefortcareers.jobs.example/"))
+    assert "LOOKALIKE" not in codes(one("https://abcho1dings.example/"))
+    links.reload_official_domains()
+    f.write_text('{"ABC Holdings": "abcholdings.example"}')
+    links.reload_official_domains()
+    assert "LOOKALIKE" in codes(one("https://abcho1dings.example/"))
+    assert "LOOKALIKE" not in codes(one("https://ga1lefort.example/"))

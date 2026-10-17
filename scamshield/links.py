@@ -663,6 +663,23 @@ def _official_domains() -> tuple:
     return tuple(sorted(out, key=lambda t: (t[2], t[0])))
 
 
+_INDEX: dict = {"src": None, "rows": ()}
+
+
+def _official_index() -> tuple:
+    """((domain, official_label, brand_tokens), ...) derived from the cached
+    mapping; rebuilt automatically whenever that cache is reloaded."""
+    entries = _official_domains()
+    if _INDEX["src"] is not entries:
+        rows = []
+        for _name, squashed, domain in entries:
+            label = _split_registrable(domain)[1]
+            tokens = tuple(sorted({t for t in (label, squashed) if len(t) >= BRAND_MIN_LEN}))
+            rows.append((domain, label, tokens))
+        _INDEX["rows"], _INDEX["src"] = tuple(rows), entries
+    return _INDEX["rows"]
+
+
 def official_domains_available() -> bool:
     """True if the official-domain mapping loaded with at least one usable entry.
 
@@ -696,16 +713,26 @@ def _split_registrable(host: str) -> tuple[list[str], str, str]:
     return labels[:-(n + 1)], labels[-(n + 1)], ".".join(labels[-n:])
 
 
-def _levenshtein(a: str, b: str) -> int:
+def _levenshtein(a: str, b: str, limit: int | None = None) -> int:
+    """Edit distance. With ``limit``, any result > limit is returned as limit+1.
+
+    The early exits are exact: the length difference is a lower bound of the
+    distance, and the minimum of a DP row never decreases in later rows, so
+    once it exceeds ``limit`` a distance <= limit is impossible.
+    """
     if a == b:
         return 0
     if len(a) < len(b):
         a, b = b, a
+    if limit is not None and len(a) - len(b) > limit:
+        return limit + 1
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
         cur = [i]
         for j, cb in enumerate(b, 1):
             cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        if limit is not None and min(cur) > limit:
+            return limit + 1
         prev = cur
     return prev[-1]
 
@@ -737,13 +764,12 @@ def _check_lookalike(p: dict, ctx: dict) -> str | None:
     if len(label) < LOOKALIKE_MIN_LEN:
         return None
     hits = []
-    for _name, _sq, domain in _official_domains():
+    for domain, official_label, _tokens in _official_index():
         if _on_domain(p["host"], domain):
             continue
-        official_label = _split_registrable(domain)[1]
         if len(official_label) < LOOKALIKE_MIN_LEN:
             continue
-        dist = _levenshtein(label, official_label)
+        dist = _levenshtein(label, official_label, LOOKALIKE_MAX_DISTANCE)
         if 1 <= dist <= LOOKALIKE_MAX_DISTANCE:
             hits.append(domain)
     if hits:
@@ -762,12 +788,10 @@ def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
     sub_squashed = [_squash(s) for s in sub]
     label_tokens = label.split("-")
     hits = []
-    for _name, squashed, domain in _official_domains():
+    for domain, _label, tokens in _official_index():
         if _on_domain(host, domain):
             continue
-        tokens = {t for t in (_split_registrable(domain)[1], squashed)
-                  if len(t) >= BRAND_MIN_LEN}
-        for tok in sorted(tokens):
+        for tok in tokens:
             if any(tok in s for s in sub_squashed) or tok in label_tokens:
                 hits.append(f"'{tok}' ({domain})")
                 break
