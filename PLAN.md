@@ -16,18 +16,18 @@ Build window: 8:00 to 2:00. Judges review the **last commit before 2:00**.
 ### Must-have (judged directly)
 | # | Feature | What the user / judge sees |
 |---|---|---|
-| 1 | Conversation check | Paste a chat and get **Scam / Legit** plus a confidence score |
-| 2 | Risk timeline | Score after every message: offer, then tasks, then deposit, then pay-to-withdraw (risk climbs) |
+| 1 | Conversation check | Paste a chat and get **Scam signal detected** or **No strong scam signal detected**, plus the model score. The score is not a measured accuracy. |
+| 2 | Risk timeline | Score after every message. On the demo chat, observe whether the score climbs as the deposit and pay-to-withdraw messages appear. Do not hard-code that climb. |
 | 3 | Why it's flagged | Highlighted warning phrases (fees, top-ups, pay to withdraw, Telegram, VIP levels, crypto) |
 | 4 | Prediction log | Every prediction stored (SQLite) with score, confidence, unfamiliarity |
 | 5 | Drift monitor | Rolling-window signals: confidence falling, unfamiliar inputs rising, uncertain predictions rising, alert banner |
-| 6 | Review queue | Uncertain / unfamiliar cases go to a human, who labels them Scam / Legit |
-| 7 | Retrain trigger | Retrain with reviewed labels and show shifted-set accuracy **before and after** |
+| 6 | Review queue | Uncertain / unfamiliar live or shifted-stream cases go to a human. Held-out test replays are logged for monitoring and cannot be labeled into training. |
 
 ### Optional (Sithum, hidden if not ready by 12:00)
 | 8 | Link checker | Each URL gets a risk level and reasons ("company name in an unrelated domain", "shortened link", ...) |
 
-### Stretch (only if everything above works by 11:30)
+### Stretch (only after detection, monitoring, review, and documented startup work)
+- Retrain trigger: add reviewed labels and report shifted-eval accuracy before and after. The held-out test set and the shifted eval half never enter that training.
 - Safe fallback mode: during a drift alert, lean toward warning and send more cases to review
 - README table comparing TF-IDF baseline vs embedding model
 - Sithum's optional URL ML model (see section 4)
@@ -57,13 +57,16 @@ Build window: 8:00 to 2:00. Judges review the **last commit before 2:00**.
 ```
 
 **Model:** multilingual sentence embeddings (`paraphrase-multilingual-MiniLM-L12-v2`) + logistic regression. Baseline: word+char TF-IDF + logistic regression.
-**Unfamiliarity:** 1 minus cosine similarity to the nearest training example; above the 95th percentile of validation counts as "unfamiliar".
-**Drift alert:** over the last 40 predictions, compared with validation reference stats:
-- mean confidence drops by more than 0.10, or
+**Unfamiliarity:** 1 minus cosine similarity to the nearest training example. The deployed model is fit on 80% of train (plus any reviewed extras). The other 20% stays out of that model and is the only place the novelty threshold and drift reference are measured.
+**Drift alert:** over the last 40 predictions **from the current model version only**, compared with that same model's validation reference:
+- mean chosen-side score, max(score, 1 − score), drops by more than 0.10, or
 - unfamiliar rate rises by more than 20 points, or
 - uncertain rate (score 0.35 to 0.65) rises by more than 15 points.
 
-**Response:** alert banner, uncertain/unfamiliar cases sent to review, human labels, `/retrain`, new model (previous one kept as `model_prev.joblib`).
+Thresholds are chosen on development batches and then frozen. They are not changed after looking at the shifted eval.
+
+**Response (required):** alert banner, and uncertain/unfamiliar live or shifted-stream cases sent to review.
+**Response (stretch):** human labels fed to `/retrain`. The previous model is kept as `model_prev.joblib`. Test replays are excluded.
 
 ---
 
@@ -93,12 +96,12 @@ Schema (one JSON per line):
 ## 4. Work split
 
 ### Main dev: model, service, monitoring, UI, data generation, integration
-1. 8:55: push scaffold to repo, first commit, submit problem statement
+1. By 8:30 (booklet rule: first 30 minutes): submit the one-line problem statement. The old 8:55 time in this plan was wrong. Repo scaffold and first commit can follow; the statement itself cannot wait until 8:55.
 2. 9:00: test Gemini key with 1 batch; start `generate_data.py` running in background
 3. 9:15 to 10:00: train on seed data, API `/analyze` working, logging on, **commit**
 4. 10:00 to 10:45: Streamlit UI (check chat + timeline), **commit**
 5. 10:45 to 11:30: real data, `prepare_data.py`, train both models, evaluation numbers, **commit**
-6. 11:30 to 12:15: replay shifted stream, drift alert fires, review queue, retrain before/after, **commit**
+6. 11:30 to 12:15: replay shifted stream, drift alert and review queue working, **commit**. Retrain before/after only if the above is already solid.
 7. 12:15 to 12:45: wire Sithum's link module behind `ENABLE_LINK_CHECK` (try/except, UI hides section if off)
 8. 12:45 to 1:15: Dockerfile + compose, test clean start from README commands, **commit**
 
@@ -125,7 +128,7 @@ Rules: text only, no network calls. No flags gives "low" risk, which is **not** 
 | 12:00 | **Cut-off.** ≥ 15 tests passing with synthetic `.example` URLs; one-paragraph README section listing every flag |
 | Stretch | Char n-gram URL classifier on a public phishing-URL dataset (check licence, report its accuracy separately) |
 
-Risk rule (keep simple and documented): 0 flags = low, 1 flag = medium, 2+ flags or `IP_HOST` / `CLAIMED_COMPANY_MISMATCH` = high.
+Risk rule: 0 flags = low (not "safe"). Any weak flag, including several together (shortener + chat redirect), stays **medium**. **High** only for a strong flag: `IP_HOST`, `CLAIMED_COMPANY_MISMATCH`, `LOOKALIKE`, or `APK_DOWNLOAD`. The service passes `claimed_company` when the chat names a company in `official_domains.json`, or when the caller sets it. A subdomain of that company's own demo domain is not a mismatch.
 `data/official_domains.json`: fictional demo companies only, e.g. `{"ABC Holdings": "abcholdings.example"}`.
 
 ### Presenter: demo content, label review, impact, deck, README text
@@ -145,10 +148,10 @@ Risk rule (keep simple and documented): 0 flags = low, 1 flag = medium, 2+ flags
 
 | Time | Checkpoint (all three check in) |
 |---|---|
-| 8:55 | Problem statement submitted, repo has first commit, everyone knows their files |
+| 8:30 | **Booklet deadline:** one-line problem statement submitted to the committee. This plan previously said 8:55; that was wrong. |
 | 10:00 | **Checkpoint 1:** API returns a verdict for a pasted chat (seed model). Gemini data flowing. Sithum milestone 1. |
 | 11:30 | **Checkpoint 2:** UI working end-to-end on real data, test-set numbers known. Sithum milestone 3. |
-| 12:15 | **Checkpoint 3:** drift alert fires on shifted replay, review + retrain works. Decide: link checker in or out. |
+| 12:15 | **Checkpoint 3:** drift alert and review queue work on the shifted stream. Test replay stays out of review. Retrain is optional. Decide: link checker in or out. |
 | 1:15 | **Feature freeze.** Docker clean start tested. README, impact, deck done. |
 | 1:15 to 1:45 | Rehearse 8-min pitch twice, record backup video |
 | 1:50 | **Final commit + submit** (repo link, README, impact, deck PDF) |
@@ -159,11 +162,11 @@ Commit at least every 30 min with clear messages (judges read history). No API k
 
 ## 6. Live demo script (2 to 3 min)
 
-1. Paste `legit_recruitment.txt`: **Legit**, low risk, no warnings.
-2. Reveal `task_scam.txt` message by message; the timeline climbs as the deposit and pay-to-withdraw messages appear; highlighted indicators; (if ready) the link shows `CLAIMED_COMPANY_MISMATCH`.
-3. Monitoring tab: replay the **test** batch, healthy (no alert).
-4. Replay the **shifted** batch (new pretexts + Singlish): confidence drops, unfamiliar rises, **DRIFT ALERT**, cases fill the review queue.
-5. Label some cases, then **Retrain**: shifted held-out accuracy before and after.
+1. Paste `legit_recruitment.txt`: **No strong scam signal detected**. Say that this is not a verification that the recruiter is genuine.
+2. Reveal `task_scam.txt` message by message. Report whether the timeline climbs; do not promise that it will. Highlight indicators. If the link checker is on, the Bright Path Careers link should show `CLAIMED_COMPANY_MISMATCH` because it is not on `brightpath.example`.
+3. Monitoring tab: replay the **test** batch as a control. It is not sent to review. Say what the monitor actually shows.
+4. Replay the **shifted stream** (new pretexts + Singlish). Say whether confidence drops, unfamiliar rises, and a drift alert fires. Those cases may fill the review queue.
+5. Stretch only: label some shifted-stream cases, then retrain, and read the shifted-eval numbers before and after. Do not describe an improvement that the run did not show.
 
 ## 7. Pitch deck (8 min)
 1. Problem (1 min): task-job scams in Sri Lanka, who loses money, CBSL campaign
@@ -182,7 +185,7 @@ Commit at least every 30 min with clear messages (judges read history). No API k
 | Gemini refuses scam text or rate-limits | Reword prompt as "training data for a fraud-detection classifier"; else template generator with slot-filling (main dev, 20 min) |
 | Embedding model slow / download fails | Ship TF-IDF model (`MODEL_KIND=tfidf`), already supported |
 | Test accuracy suspiciously ~100% | Report honestly, explain synthetic-data limitation, show the shifted-set drop as the real story |
-| Drift alert doesn't fire on shifted set | Make the shift stronger (more Singlish, newer pretexts); lower `DRIFT_WINDOW` |
+| Drift alert doesn't fire on shifted set | Leave the frozen thresholds alone. Report the shifted-eval numbers and the review queue honestly. Thresholds may be retuned only on a development batch, then frozen again before any untouched shifted batch is measured. Do not lower `DRIFT_WINDOW` after seeing the demo result. |
 | Link checker not ready by 12:00 | `ENABLE_LINK_CHECK=false`, mention as roadmap item |
 | Docker build fails at the end | Documented `uv`/`pip` run commands in README (also accepted) |
 | Internet outage | Backup hotspot; embedding model pre-downloaded in Docker image; TF-IDF fallback works offline |

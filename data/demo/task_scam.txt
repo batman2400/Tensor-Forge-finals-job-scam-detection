@@ -1,0 +1,10 @@
+Recruiter: Hi! I'm Ruwani from Bright Path Careers. We found your profile and have a flexible part-time online job for students.
+Candidate: Hi, what kind of job is it?
+Recruiter: Very simple. You rate products on our partner shopping app. Each rating earns Rs. 200, no experience needed.
+Candidate: Sounds easy. How many tasks per day?
+Recruiter: 30 tasks a day, you can earn up to Rs. 6000 daily from home. Register here: https://brightpath-careers.tasks-portal.example/join
+Candidate: Done. I finished the first 5 tasks.
+Recruiter: Excellent! Your dashboard shows Rs. 1000. Join our Telegram group for VIP tasks with higher commission.
+Recruiter: To unlock VIP tasks you need to top up your task wallet with Rs. 15,000. It will be returned with 40% commission.
+Candidate: I topped up. My balance shows Rs. 21,000 now. How do I withdraw?
+Recruiter: Before withdrawal you must pay a Rs. 8,000 tax clearance fee to release your earnings. Please pay within 2 hours or your account will be frozen.

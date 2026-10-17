@@ -1,0 +1,1016 @@
+{
+  "note": "Read-only review scan of files on disk. Not an evaluation and not a frozen split.",
+  "scanned_at": "2026-10-17T11:11:35",
+  "errors": 0,
+  "warnings": 127,
+  "files": [
+    {
+      "path": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\data\\raw\\shifted_legit.jsonl",
+      "rows": 95,
+      "errors": 0,
+      "warnings": 12,
+      "findings": [
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 6,
+          "match": "fee eka Rs. 60,000"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 11,
+          "match": "fee Rs. 30,000"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 22,
+          "match": "Registration fee"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 31,
+          "match": "LKR 55,000. Kisima bond ekak or placement charge"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 60,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 65,
+          "match": "deposit karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 67,
+          "match": "gewanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 75,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 78,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 85,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 92,
+          "match": "registration fee"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 95,
+          "match": "Rs. 24,000/- salary eka direct bank account ekata transfer"
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\data\\raw\\shifted_scam.jsonl",
+      "rows": 100,
+      "errors": 0,
+      "warnings": 36,
+      "findings": [
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 5
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 6
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 8
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 9
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 13
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 14
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 14
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 15
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 23
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 28
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 30
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 45
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 46
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 56
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 59
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 62
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 64
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 64
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 66
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 69
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 72
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 76
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 76
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 77
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 78
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 79
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 79
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 80
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 81
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 82
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 84
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 85
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 87
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 93
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 96
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_missing_pretext",
+          "detail": "Shifted scam does not use a shifted pretext (VIP, tax clearance, USDT, freeze, insurance, combo/lucky order).",
+          "line": 100
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\data\\raw\\test_legit.jsonl",
+      "rows": 78,
+      "errors": 0,
+      "warnings": 7,
+      "findings": [
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 6,
+          "match": "LKR 500. Monthly direct bank transfer"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 18,
+          "match": "Rs. 1,500 rate ekata direct transfer"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 27,
+          "match": "fee is LKR 35,000"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 36,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 51,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 62,
+          "match": "registration fee"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 74,
+          "match": "deposit wenawa. Total Rs. 7,500"
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\data\\raw\\test_scam.jsonl",
+      "rows": 76,
+      "errors": 0,
+      "warnings": 13,
+      "findings": [
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 6,
+          "match": "Tax Clearance"
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 8
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 8,
+          "match": "VIP level"
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 11
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 11
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 13
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 14,
+          "match": "Tax Clearance"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 19,
+          "match": "combo order"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 33,
+          "match": "Combo Task"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 66,
+          "match": "Lucky Order"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 70,
+          "match": "VIP upgrade"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 73,
+          "match": "tax clearance"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 76
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\data\\raw\\train_legit.jsonl",
+      "rows": 289,
+      "errors": 0,
+      "warnings": 22,
+      "findings": [
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 7,
+          "match": "LKR 72,000. Would you like me to transfer"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 13,
+          "match": "paying LKR 2,200"
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 33
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 36,
+          "match": "LKR 3,000 per hour. Payment eka monthly direct bank transfer"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 45,
+          "match": "paying LKR 15,000 per SKU, bringing the total contract value to LKR 60,000"
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 63
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 84,
+          "match": "deposit karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 86
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 88,
+          "match": "LKR 65,000). Kisima security deposit ekak or course fee"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 126,
+          "match": "transfer. Maseta around LKR 28,800"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 137,
+          "match": "paying LKR 1,800"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 145,
+          "match": "fee of LKR 110,000"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 152,
+          "match": "deposit karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 154,
+          "match": "pay cycle, our"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 158,
+          "match": "LKR 5,000 per month. Kisima registration fee"
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 164
+        },
+        {
+          "severity": "warning",
+          "kind": "realism",
+          "code": "unrealistic_singlish",
+          "detail": "Marked singlish, with fewer than two Singlish markers.",
+          "line": 166
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 185,
+          "match": "transfer karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 193,
+          "match": "deposit karanna"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 254,
+          "match": "send an official purchase order email from our"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 285,
+          "match": "deposit bank account information on our"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "legit_asks_for_money",
+          "detail": "Labelled legitimate, but a recruiter turn asks for money.",
+          "line": 289,
+          "match": "transfer karanna"
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\data\\raw\\train_scam.jsonl",
+      "rows": 381,
+      "errors": 0,
+      "warnings": 37,
+      "findings": [
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 38,
+          "match": "Combo Task"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 63,
+          "match": "VIP-1 level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 70,
+          "match": "Account Frozen"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 125,
+          "match": "VIP 1 status walata upgrade"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 135,
+          "match": "Tax Clearance"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 136,
+          "match": "Combo Task"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 168,
+          "match": "Combo Task"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 172,
+          "match": "VIP Level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 175,
+          "match": "Combo Order"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 193,
+          "match": "VIP Level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 196,
+          "match": "combo task"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 203
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 211
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 211,
+          "match": "VIP level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 220,
+          "match": "VIP Level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 236,
+          "match": "VIP level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 248,
+          "match": "Combo Order"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 259,
+          "match": "VIP Level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 274,
+          "match": "Tax clearance"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 291,
+          "match": "combo task"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 296
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 298,
+          "match": "VIP Merchant Level"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 301
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 305,
+          "match": "VIP level"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 308,
+          "match": "Combo Order"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 309
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 314,
+          "match": "VIP task level"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 321
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 330,
+          "match": "guarantee deposit"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 331,
+          "match": "Combo Task"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 337,
+          "match": "Combo Task"
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 345,
+          "match": "Combo order"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 356
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 364
+        },
+        {
+          "severity": "warning",
+          "kind": "leak",
+          "code": "shifted_pretext",
+          "detail": "Train/test scam uses a pretext reserved for the shifted set. This is a review flag, not a split decision.",
+          "line": 364,
+          "match": "VIP upgrade ekak danna wenawa. Upgrade"
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 367
+        },
+        {
+          "severity": "warning",
+          "kind": "label",
+          "code": "scam_without_payment",
+          "detail": "Labelled scam, but no recruiter payment request was found.",
+          "line": 371
+        }
+      ]
+    }
+  ]
+}

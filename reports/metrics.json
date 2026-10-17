@@ -1,0 +1,116 @@
+{
+  "tfidf": {
+    "model_version": "tfidf-20261017T054258",
+    "kind": "tfidf",
+    "reference": {
+      "model_version": "tfidf-20261017T054258",
+      "n_validation": 137,
+      "mean_confidence": 0.8579557874725874,
+      "uncertain_rate": 0.029197080291970802,
+      "unfamiliar_rate": 0.051094890510948905
+    },
+    "test": {
+      "n": 154,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "confusion_matrix": [
+        [
+          78,
+          0
+        ],
+        [
+          0,
+          76
+        ]
+      ],
+      "false_positives": 0,
+      "mean_confidence": 0.8519501746164005,
+      "uncertain_rate": 0.012987012987012988,
+      "unfamiliar_rate": 0.032467532467532464,
+      "review_rate": 0.045454545454545456,
+      "roc_auc": 1.0
+    },
+    "shifted": {
+      "n": 98,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "confusion_matrix": [
+        [
+          50,
+          0
+        ],
+        [
+          0,
+          48
+        ]
+      ],
+      "false_positives": 0,
+      "mean_confidence": 0.8277115241034617,
+      "uncertain_rate": 0.02040816326530612,
+      "unfamiliar_rate": 0.08163265306122448,
+      "review_rate": 0.10204081632653061,
+      "roc_auc": 1.0
+    }
+  },
+  "embed": {
+    "model_version": "embed-20261017T054515",
+    "kind": "embed",
+    "reference": {
+      "model_version": "embed-20261017T054515",
+      "n_validation": 137,
+      "mean_confidence": 0.8494938015937805,
+      "uncertain_rate": 0.058394160583941604,
+      "unfamiliar_rate": 0.051094890510948905
+    },
+    "test": {
+      "n": 154,
+      "accuracy": 0.974025974025974,
+      "precision": 0.9615384615384616,
+      "recall": 0.9868421052631579,
+      "f1": 0.974025974025974,
+      "confusion_matrix": [
+        [
+          75,
+          3
+        ],
+        [
+          1,
+          75
+        ]
+      ],
+      "false_positives": 3,
+      "mean_confidence": 0.8418892025947571,
+      "uncertain_rate": 0.07142857142857142,
+      "unfamiliar_rate": 0.025974025974025976,
+      "review_rate": 0.09090909090909091,
+      "roc_auc": 0.9978070175438597
+    },
+    "shifted": {
+      "n": 98,
+      "accuracy": 0.9693877551020408,
+      "precision": 0.9411764705882353,
+      "recall": 1.0,
+      "f1": 0.9696969696969697,
+      "confusion_matrix": [
+        [
+          47,
+          3
+        ],
+        [
+          0,
+          48
+        ]
+      ],
+      "false_positives": 3,
+      "mean_confidence": 0.7902426719665527,
+      "uncertain_rate": 0.19387755102040816,
+      "unfamiliar_rate": 0.01020408163265306,
+      "review_rate": 0.20408163265306123,
+      "roc_auc": 1.0
+    }
+  }
+}

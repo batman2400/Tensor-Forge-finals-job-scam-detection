@@ -1,0 +1,8 @@
+Recruiter: Hi Dilshan, this is Amaya from the HR team at Lakview Solutions. Thanks for applying for the Software Engineering Intern position.
+Candidate: Hi Amaya, thank you for reaching out!
+Recruiter: We'd like to invite you to a technical interview. Would Wednesday at 11 AM work?
+Candidate: Yes, that works for me.
+Recruiter: Great. Please complete the short coding test on our careers portal before the interview: https://careers.lakview.example/assessment
+Candidate: Sure. Is the internship paid?
+Recruiter: Yes, the stipend is Rs. 45,000 per month. If you're selected, we'll ask for your bank details through the HR portal after you sign the contract.
+Candidate: Perfect, see you on Wednesday.
