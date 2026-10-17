@@ -1,89 +1,189 @@
 # ScamShield LK
 
-An adviser-support prototype. A career adviser pastes a recruitment chat a student has already received. The service proposes a wording score, shows the phrases behind it, and sends uncertain, unfamiliar, and high-risk-link chats to a person. It does not message anyone, open links, or send money.
+**Task-job scam detection for Sri Lankan recruitment chats, built to support a career adviser.**
 
-**Who it is for:** university students, school leavers, and other job seekers who receive "part-time online job" offers on WhatsApp, Telegram, and social media. The person using the screen is the adviser, not the student alone.
+A student receives a "part-time online job" offer on WhatsApp or Telegram. A career adviser pastes the chat into ScamShield. The service returns a wording score, highlights the phrases behind it, shows how the score moved message by message, and routes uncertain, unfamiliar, or risky-link chats to a person.
 
-The deployed pipeline is `tfidf-20261017T080050+pipeline-20261017T080050`. The classification line is still 0.50. Read the raw classifier and the final verdict separately. On the inspected new-tactic batch the raw classifier is **30 of 40** and the final verdict is **40 of 40**, with 0 false positives. Ten of those final hits are English chats the payment rule lifts to 0.72; those ten are not queued. A one-time fresh set, not used for training, is raw **14 of 16** and final **16 of 16**, with 0 false positives and 7 of 16 sent to review. The original held-out test is still **154 of 154** and the original shifted eval is **98 of 98**. A "no strong scam signal" line is a wording assessment, not a statement that the recruiter is genuine.
+ScamShield does not message anyone, open links, or move money. The adviser makes the decision. The score is a draft.
 
-## Start here
+> **"No strong scam signal" is a wording assessment, not a statement that the recruiter is genuine.**
 
-From this directory (`scamshield/`):
+---
+
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [Features](#features)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [API](#api)
+- [Data](#data)
+- [Results](#results)
+- [Monitoring and drift](#monitoring-and-drift)
+- [Configuration](#configuration)
+- [Project layout](#project-layout)
+- [Testing](#testing)
+- [Limitations](#limitations)
+- [AI tools used](#ai-tools-used)
+- [Further reading](#further-reading)
+
+---
+
+## Why this exists
+
+Task-job scams follow a pattern. They open with a friendly part-time offer and move to small paid tasks. A dashboard then shows growing earnings, and finally the victim is asked for a fee. The fee can be a registration charge, a task-wallet top-up, a "merchant" deposit, or a payment before withdrawal. Sri Lanka CERT and the CID have described fake job offers and work-from-home schemes spread over chat apps. Students and school leavers are an obvious target. See [IMPACT.md](IMPACT.md) for the figures and sources.
+
+ScamShield helps an adviser answer three questions in front of the student:
+
+1. **Does this chat carry a scam signal, and which phrases support it?**
+2. **When did the signal appear?** The timeline is the model's score after each message. It is not a scripted climb.
+3. **Are new chats behaving unlike the ones the model was trained on?** If so, raise a drift alert and send uncertain cases to a person.
+
+## Features
+
+- **Chat analysis.** A verdict, a score, and the phrases that support it. English and Singlish are both covered.
+- **Per-message timeline.** The score after each message, so the adviser can see where the signal appeared.
+- **Link checker.** Text-only checks with no network calls. It flags lookalike domains, IP hosts, APK downloads, and links that don't match a company named in the chat.
+- **Review queue.** Uncertain, unfamiliar, credential-request, and high-risk-link chats are queued for a person to label.
+- **Drift monitoring.** A rolling window of the last 40 predictions is compared with a validation reference.
+- **Optional retraining.** Reviewed examples can be folded back into the model. The previous model is kept as a backup.
+
+## Quick start
+
+You need Python 3.11 or newer and [uv](https://docs.astral.sh/uv/). Docker is optional.
+
+### Option A: run locally
+
+From this directory:
 
 ```powershell
 uv sync
 copy .env.example .env
 ```
 
-Put `GEMINI_API_KEY` in `.env` only if you are generating data. The key stays out of the repo. `.env.example` lists the names and nothing else.
+The defaults in `.env` work as they are. A Gemini API key is only needed if you want to regenerate the synthetic data. `.env` is git-ignored.
 
-`MODEL_KIND=tfidf` is the default and does not download an embedding model. For the multilingual embedding model:
-
-```powershell
-uv sync --group embed
-```
-
-Then set `MODEL_KIND=embed` in `.env`. If that download fails, leave `MODEL_KIND=tfidf`.
-
-Train a model before the API will analyse a chat. Do this only after the raw files are finished and `scripts/prepare_data.py` has been run. A partial `data/raw` file is not a split.
+The frozen data in `data/processed/` is committed. Train the default model, then start the API and the UI in two terminals:
 
 ```powershell
-uv run python scripts/prepare_data.py
 uv run python scripts/train.py --kind tfidf
 ```
 
-Two processes:
-
 ```powershell
 uv run uvicorn scamshield.api:app --host 127.0.0.1 --port 8000
+```
+
+```powershell
 uv run streamlit run ui/app.py
 ```
 
-Open the Streamlit URL it prints (port 8501). Health check: `http://127.0.0.1:8000/health`.
+- UI: <http://127.0.0.1:8501>
+- API health check: <http://127.0.0.1:8000/health>
 
-`uv.lock` pins the dependency set that `uv sync` installs. These `uv` commands are the start path when Docker is not running.
+The API returns `503` from `/analyze` until a model has been trained.
 
-Container start, from this same directory. The image trains the TF-IDF model from `data/processed` while it builds. It does not read a Gemini key and it does not install the embedding model.
+### Option B: Docker
 
 ```powershell
 docker compose up --build
 ```
 
-Open `http://127.0.0.1:8501`. Health check: `http://127.0.0.1:8000/health`. The UI container calls the API at `http://api:8000`. Stop with `docker compose down`.
+The image trains the TF-IDF model from `data/processed` while it builds. It reads no Gemini key and doesn't install the embedding model. The UI container calls the API at `http://api:8000`.
 
-Checks that do not need a finished dataset:
+- UI: <http://127.0.0.1:8501>
+- API health check: <http://127.0.0.1:8000/health>
+
+Stop with `docker compose down`.
+
+### Optional: embedding model
+
+The default model is TF-IDF and downloads nothing. To try the multilingual embedding model:
 
 ```powershell
-uv run python -m unittest discover -s tests
-uv run python scripts/review_data.py
+uv sync --group embed
+uv run python scripts/train.py --kind embed
 ```
 
-`review_data.py` is read-only. Run it again whenever a file in `data/raw/` finishes. It exits 1 if it finds a real phone number, NIC number, bank account, named real organisation, off-example link, or a broken row. Warnings, which do not fail the run, cover a possible wrong label, an unrealistic chat, and a shifted pretext that showed up in train or test. A trailing half-written line is reported as still in progress.
+Then set `MODEL_KIND=embed` in `.env`. It scored worse than TF-IDF in the comparison below, so TF-IDF is the one deployed.
 
-## Problem
+### Try the demo chats
 
-Task-job scams start as a friendly part-time offer, move through small paid tasks, show earnings on a dashboard, and then ask for a fee: registration, a task-wallet top-up, a "merchant" deposit, or a payment before withdrawal. Sri Lanka CERT and the CID have described fake job offers and work-from-home schemes on WhatsApp, Telegram, and other chat apps. See [IMPACT.md](IMPACT.md).
+Two synthetic chats are in `data/demo/`. Paste `legit_recruitment.txt` first, then `task_scam.txt`. The scam chat links to a "Bright Path" site that is not on `brightpath.example`, so the link checker should flag `CLAIMED_COMPANY_MISMATCH`.
 
-The product answers three questions a career adviser can check in front of a student:
+## How it works
 
-1. Does this chat carry a scam signal, and which phrases support that?
-2. Did the signal appear only after the fee, or was it there earlier? The timeline is the model's score after each message. It is not a scripted climb.
-3. Are new chats behaving unlike the ones the model was trained on? If so, raise a drift alert and send uncertain cases to a person.
+```
+Streamlit UI (8501)
+  Check chat | Monitoring | Review queue
+        │ HTTP
+FastAPI (8000)
+  /analyze  /links  /replay  /monitoring  /review  /retrain
+        │
+  parse chat ─► classifier (score + unfamiliarity)
+            ─► context rules (refusals, questions, reports, "send money")
+            ─► phrase indicators (explanation only)
+            ─► link checker (optional)
+            ─► SQLite log ─► drift check ─► review queue
+```
 
-A "no strong scam signal" result is not a statement that the recruiter is genuine.
+**Classifier.** Word and character TF-IDF with logistic regression (default). The alternative is `paraphrase-multilingual-MiniLM-L12-v2` embeddings with logistic regression (`MODEL_KIND=embed`). The scam line is 0.50.
+
+**Context rules.** A short check adjusts the classifier score for cases it handles badly. A refusal, a question, or a report of a scam is moved down. An instruction to send money without the usual fee words is lifted to 0.72. A greeting with none of those cues stays under the line. Phrase hits inside a refusal are not shown.
+
+**Phrase indicators.** These explain a verdict. They never decide it.
+
+**Unfamiliarity.** One minus the cosine similarity to the nearest training example. The deployed model fits on 80% of train. The other 20% is used only to set the unfamiliarity cut (95th percentile) and the drift reference.
+
+**Credential requests.** A request for a password, PIN, or one-time code is queued with the reason `credential-request`. It does not change the classifier score. "Do not share an OTP" is not a credential request.
+
+**Link checker.** Text only, controlled by `ENABLE_LINK_CHECK`. No flags means risk `low`, which is not "safe".
+
+| Strength | Flags | Effect |
+|---|---|---|
+| Strong | `IP_HOST`, `CLAIMED_COMPANY_MISMATCH`, `LOOKALIKE`, `APK_DOWNLOAD` | One flag alone makes the risk `high` |
+| Weak | `AT_SYMBOL`, `SHORTENER`, `CHAT_REDIRECT`, `BRAND_IN_SUBDOMAIN`, `FREE_HOSTING_FORM`, `PUNYCODE`, `MANY_SUBDOMAINS` | Any number stays `medium` |
+
+A company counts as claimed when the chat names one listed in `data/official_domains.json` and the host isn't that company's domain or a subdomain of it. See `scamshield/links.py`.
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Model loaded, model version, fit version, drift policy |
+| `POST` | `/analyze` | Score a chat. Body: `text`, optional `claimed_company`, `expected_domain` |
+| `POST` | `/links` | Run the link checker alone |
+| `POST` | `/replay` | Push a stored set (`test`, `shifted`, `drift`) through the live pipeline |
+| `GET` | `/monitoring` | Current drift status |
+| `GET` | `/predictions` | Recent logged predictions |
+| `GET` | `/review` | The review queue |
+| `POST` | `/review/{id}` | Label a queued chat (`label` 0 or 1) |
+| `POST` | `/retrain` | Retrain with reviewed examples. Keeps the old model as `artifacts/model_prev.joblib` |
+| `POST` | `/admin/reset-logs` | Clear the prediction log |
+
+Example:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/analyze `
+  -ContentType "application/json" `
+  -Body '{"text": "Recruiter: Pay Rs 5000 to unlock your earnings."}'
+```
+
+FastAPI also serves interactive docs at <http://127.0.0.1:8000/docs>.
 
 ## Data
 
-Every chat is synthetic, written during this build, and stays in the repo only as training and test material. Nothing here is sent to a phone, an email address, or a public channel.
+Every chat is **synthetic**. None come from real victims, and none are sent to a phone, an email address, or a public channel.
 
-| Source | What it is | Licence / method |
-|---|---|---|
-| `data/raw/*.jsonl` | Gemini conversations. Train and test use different prompt wording. The shifted file uses new scam pretexts and more Singlish. | Generated for this project. Not a public dataset. Model name is in each row's `source` field (`GEMINI_MODEL` in `.env`, default `gemini-3.8-flash`). |
-| `data/seed/seed.jsonl` | Hand-written chats, if present. Folded into train by `prepare_data.py`. | Written by the team. |
-| `data/demo/*.txt` | Two labelled synthetic demos for the UI. | Written by the team. |
-| `data/official_domains.json` | Fictional companies and `.example` domains for the link checker. | Written by the team. |
+| Source | What it is |
+|---|---|
+| `data/raw/*.jsonl` | Gemini-generated conversations. Train and test use different prompt wording. The shifted set uses new scam pretexts and more Singlish. |
+| `data/seed/seed.jsonl` | 12 hand-written chats, folded into train. |
+| `data/seed/reviewed_tactics.jsonl` | Reviewed examples added to the model fit only. |
+| `data/demo/` | Two labelled demo chats and a drift sample for the UI. |
+| `data/official_domains.json` | Fictional companies on `.example` domains, used by the link checker. |
+| `data/confirm/` | Evaluation batches written before they were scored. |
 
-Schema, one JSON object per line:
+One JSON object per line:
 
 ```json
 {"label": 1, "category": "task_wallet_topup", "lang": "en",
@@ -91,23 +191,26 @@ Schema, one JSON object per line:
  "messages": [{"sender": "Recruiter", "text": "..."}, {"sender": "Candidate", "text": "..."}]}
 ```
 
-`label` 1 is a scam chat. `label` 0 is a legitimate recruitment chat, including hard cases such as salary figures and a bank account requested only after hiring.
+`label` 1 is a scam and 0 is a legitimate recruitment chat. The legitimate set includes hard cases such as salary figures and a bank account requested only after hiring.
 
-| Split | Frozen size | Role |
+| Split | Size | Role |
 |---|---|---|
-| train | 682 (387 scam, 295 legit) | Fit the model. Includes the 12 hand-written seed chats. |
-| test | 154 (76 scam, 78 legit) | Held-out results. Separate generation run. No near-duplicate of train was removed at similarity 0.9. |
-| shifted | 195 before the cut (100 scam, 95 legit) | New pretexts that are not in the train prompt, plus more Singlish, including legitimate Singlish chats. Eval half: 98 (48 scam, 50 legit). Replay stream: 97 (52 scam, 45 legit). No stream row was a near-duplicate of the eval half. |
+| Train | 682 (387 scam, 295 legit) | Fit the model |
+| Test | 154 (76 scam, 78 legit) | Held-out results from a separate generation run |
+| Shifted eval | 98 (48 scam, 50 legit) | New pretexts and more Singlish |
+| Shifted stream | 97 (52 scam, 45 legit) | Replay stream for monitoring |
 
-Safety rules used in generation and in the review scan:
+**Safety rules** for generation and for the review scan:
 
-- Fictional people and companies. No real banks or agencies as the recruiter.
+- Fictional people and companies. No real bank or agency appears as the recruiter.
 - Phone numbers only as `07X-XXX-XXXX`. No NIC numbers and no real account numbers.
-- Links only on the reserved `.example` domain (or `example.com` / `example.org` / `example.net`).
+- Links only on the reserved `.example` domain, or `example.com`, `example.org`, and `example.net`.
 
-After the review scan, 29 chats that named a real bank or agency were removed: Sampath Bank, Hatton National Bank, Bank of Ceylon, the Foreign Ministry, and the Sri Lanka Bureau of Foreign Employment. Two of those chats named two organisations, which is why the scan reported 31 errors. Payroll chats stay. In each of them the company is paying the candidate, or the recruiter says there is no fee.
+`scripts/review_data.py` enforces these rules. It exits 1 on a real phone number, NIC number, bank account, named real organisation, off-example link, or broken row. Its last run found 0 errors and 127 warnings (possible wrong labels, unrealistic chats, and shifted pretexts that also appear in train or test). The warnings need a person to read them.
 
-Generation commands, one file at a time:
+### Regenerating the data (optional)
+
+This needs `GEMINI_API_KEY` in `.env`. Generate one file at a time, then freeze the splits only once the raw files are finished:
 
 ```powershell
 uv run python scripts/generate_data.py --split train   --label 1 --n 300
@@ -116,130 +219,146 @@ uv run python scripts/generate_data.py --split test    --label 1 --n 80
 uv run python scripts/generate_data.py --split test    --label 0 --n 80
 uv run python scripts/generate_data.py --split shifted --label 1 --n 100
 uv run python scripts/generate_data.py --split shifted --label 0 --n 100
+uv run python scripts/review_data.py
+uv run python scripts/prepare_data.py
 ```
 
-`prepare_data.py` is what freezes the splits. Do not run it on a file that is still growing. It has been run on the finished raw files. The frozen files are `data/processed/train.jsonl`, `test.jsonl`, `shifted.jsonl`, and `shifted_stream.jsonl`.
+Don't run `prepare_data.py` on a file that is still growing.
 
-## Architecture
+## Results
 
-```
-Streamlit UI (port 8501)
-  Check chat | Monitoring | Review queue
-            | HTTP
-FastAPI (port 8000)
-  /analyze  /replay  /monitoring  /review  /retrain
-  parse chat -> classifier (score + unfamiliarity)
-             -> phrase indicators (explanation only)
-             -> links.check_urls (optional)
-             -> SQLite log -> drift check -> review queue
-```
+Deployed pipeline: `tfidf-20261017T080050+pipeline-20261017T080050`. The scam threshold is 0.50 and was not lowered to improve any number below.
 
-The verdict comes from the classifier. A short check then moves the score when the chat is a refusal, a question, or a report of a scam, or when it tells the reader to send money without the usual fee words. A greeting with none of those words stays under the line. Phrase lists and the link checker explain a chat. They do not decide the label. Phrase hits inside a refusal are not shown.
+*Raw* is the classifier probability. *Final* is that probability after the context rules.
 
-**Model.** Default: word and character TF-IDF plus logistic regression. Optional: `paraphrase-multilingual-MiniLM-L12-v2` embeddings plus logistic regression (`MODEL_KIND=embed`).
-
-**Unfamiliarity.** One minus the cosine similarity to the nearest training example. The deployed model is fit on 80% of train. The other 20% is used only to set the unfamiliarity cut (95th percentile on that slice) and the drift reference. Reviewed extras can be added to the fit later. They are not added to that 20%.
-
-**Link checker.** Text only, no network calls. `ENABLE_LINK_CHECK=false` turns it off. A missing or crashing checker is skipped. No flags means risk `low`, which is not "safe". A strong flag is `high` on its own: `IP_HOST`, `CLAIMED_COMPANY_MISMATCH` (the chat names a company in `official_domains.json` and the host is not that company's domain or a subdomain of it), `LOOKALIKE`, and `APK_DOWNLOAD`. Any number of weak flags stays `medium`: `AT_SYMBOL`, `SHORTENER`, `CHAT_REDIRECT`, `BRAND_IN_SUBDOMAIN`, `FREE_HOSTING_FORM`, `PUNYCODE`, and `MANY_SUBDOMAINS`. See `scamshield/links.py`.
-
-## Evaluation
-
-Quote the layer table first, then the frozen-split tables. The saved model is word and character TF-IDF plus logistic regression (`artifacts/model.joblib`, fit `tfidf-20261017T080050`, pipeline `tfidf-20261017T080050+pipeline-20261017T080050`). The threshold was not lowered. `reports/layer_comparison.json` is this run. `reports/metrics.json` is the frozen-split run. The embedding block in that file is the earlier comparison and was not retrained.
-
-Reviewed examples in `data/seed/reviewed_tactics.jsonl` were added only to the fit. The 40 new-tactic chats and the 40 onboarding chats stayed development data. `data/confirm/fresh_scenarios.jsonl` was written before this score and was not used to train or to move a threshold.
+### New wording (the realistic test)
 
 | Set | Role | Raw correct | Final correct | False positives | Sent to review | Silent scam misses |
 |---|---|---|---|---|---|---|
-| New tactics (`policy_shifted.jsonl`) | development, already inspected | 30 of 40 | 40 of 40 | 0 | 20 of 40 | 0 |
-| Onboarding (`policy_legit.jsonl`) | development, already inspected | 40 of 40 | 40 of 40 | 0 | 40 of 40 | 0 |
-| Fresh scenarios (`fresh_scenarios.jsonl`) | scored once | 14 of 16 | 16 of 16 | 0 | 7 of 16 | 0 |
+| New tactics | Development, already inspected | 30 of 40 | 40 of 40 | 0 | 20 of 40 | 0 |
+| Onboarding (all legitimate) | Development, already inspected | 40 of 40 | 40 of 40 | 0 | 40 of 40 | 0 |
+| Fresh scenarios | Scored once, never trained on | 14 of 16 | 16 of 16 | 0 | 7 of 16 | 0 |
 
-Raw is the classifier probability. Final is that probability after the context rules. On the tactic batch the ten chats the rule changes are English, with raw scores from 0.472 to 0.498 lifted to 0.72, and none of those ten is queued. The Singlish half of that batch is inside the 30 raw hits. On the fresh set the two rule changes are an equipment bond (raw 0.446) and a joining clinic fee (raw 0.460). Both are unfamiliar, so both still reach review. The onboarding batch is all legitimate and all 40 still go to review, so a correct label there does not by itself save the adviser work.
+- On the new-tactic batch, ten English scams scored 0.47 to 0.50 raw and are lifted to 0.72 by the payment rule. Those ten are not queued.
+- On the fresh set, an equipment bond (raw 0.446) and a joining clinic fee (raw 0.460) are lifted by the rules. Both are unfamiliar, so both still reach review.
+- A correct label on onboarding chats does not save the adviser work. All 40 legitimate chats still go to review, because they are unlike the training chats.
 
-An explicit password, PIN, or one-time-code request is the review reason `credential-request`. It does not change the classifier score. "Give me your banking password and the one-time code" scores 0.648 before and after the rules, and the queue reason is `uncertain,credential-request`. "They asked me to tell you to pay Rs 10000 to unlock your earnings" stays at its classifier score of 0.692, which is over the line. "Do not share an OTP" is not a credential request.
-
-The tables below are the original frozen splits. They are real, and they are a different test from the fresh tactics.
+### Original frozen splits
 
 | Set | n | Precision (scam) | Recall (scam) | False positives | Review rate |
 |---|---|---|---|---|---|
 | Held-out test | 154 | 1.000 | 1.000 | 0 | 7 of 154 (4.5%) |
 | Shifted eval | 98 | 1.000 | 1.000 | 0 | 10 of 98 (10.2%) |
 
-False positives means legitimate chats scored as a scam signal. Review rate is the share of that frozen set with an uncertain score (0.35 to 0.65) or an unfamiliarity above the cut from the validation slice. A chat can be both, so the rate is not the sum of the two. Drift fallback is not included: it only adds chats while a drift alert is already on. The test replay is still not queued. This column is the share that meets the standing review rule.
+Review rate is the share of the set with an uncertain score (0.35 to 0.65) or unfamiliarity above the validation cut.
+
+> **Read the perfect scores carefully.** The train and test chats are synthetic and share a lot of fee and task wording. Some train and test scams already use a pretext that is also in the shifted set (VIP, tax clearance, combo or lucky order). The original shifted eval is therefore not a fully unseen-pretext test. The new-tactic batch above, where the raw classifier gets 30 of 40, is the better measure on different wording.
+
+### Model comparison (earlier run, original splits only)
 
 | Model | Test precision | Test recall | Test false positives | Shifted precision | Shifted recall |
 |---|---|---|---|---|---|
-| TF-IDF + logistic regression | 1.000 | 1.000 | 0 | 1.000 | 1.000 |
+| TF-IDF + logistic regression (deployed) | 1.000 | 1.000 | 0 | 1.000 | 1.000 |
 | Multilingual embeddings + logistic regression | 0.962 | 0.987 | 3 | 0.941 | 1.000 |
 
-The embedding model also has 3 false positives on the shifted eval (47 of 50 legitimate chats scored as legitimate). Its scam recall there is 1.000 (48 of 48).
+To reproduce the comparison, install the embedding extra and run `uv run python scripts/train.py --kind tfidf --compare`. The saved file stays TF-IDF.
 
-TF-IDF is correct on every chat in the original held-out test and the original shifted eval. Those chats reuse a lot of the same fee and task wording. The fresh tactic batch is the measurement on different wording, and that is 21 of 40. Some train and test scams already use a pretext reserved for the shifted set (VIP, tax clearance, combo or lucky order), so the original shifted eval is not a fully unseen-pretext test. The embedding comparison is a second model on the original splits only. It is not deployed.
+Raw numbers are in `reports/metrics.json` (frozen splits) and `reports/layer_comparison.json` (raw vs final).
 
-On the TF-IDF model, unfamiliar chats are 3.2% of the test set and 8.2% of the shifted eval. Labels can be right while the chat is still unlike the training slice.
+## Monitoring and drift
 
-Reproduce the comparison with the embed extra installed. The saved file stays TF-IDF:
+Every `/analyze` and replay call is logged to SQLite (`logs/predictions.db`): score, chosen-side score `max(score, 1 − score)`, unfamiliarity, and whether the row went to review. Chat text is stored only for rows that enter the queue.
 
-```powershell
-uv sync --group embed
-uv run python scripts/train.py --kind tfidf --compare
+Drift uses the last 40 predictions from the current pipeline version, compared with that version's validation reference. It needs at least 15 predictions. Policy `three-signal-alert-v1` is frozen:
+
+| Signal | Condition | Effect |
+|---|---|---|
+| Confidence drop | Mean chosen-side score falls by more than 0.10 | **Drift alert** |
+| Unfamiliar rate | Rises by more than 20 points | **Drift alert** |
+| Uncertain rate | Score between 0.35 and 0.65 rises by more than 15 points | **Drift alert** |
+| Mean unfamiliarity | Above a stored one-sided Student-t prediction limit | **Advisory only**, with no alert and no review |
+
+While an alert is active, chats scoring at or above `DRIFT_FALLBACK_THRESHOLD` (0.20) also go to review. An uncertain score, an unfamiliar chat, or a high-risk link queues that chat on its own at any time.
+
+**Replay controls** in the Monitoring tab:
+
+- **Replay shifted set** is the job-chat control. Its rows can be queued and reviewed.
+- **Replay test set** is logged but never queued, and it can never be labelled into a retrain.
+- **Replay unfamiliar writing** sends out-of-domain text, including biology writing. It shows that unfamiliar text can move the window. It is not evidence that the service detects evolving job scams.
+
+**What the drift checks showed.** The rules behave as written. Each of the three signals can raise an alert on its own, and the advisory alone does not. But on a matched pair of fresh batches, both ordinary onboarding chats and new-tactic chats raised the alert. The alert is therefore an *input-change* warning. It also fires on ordinary hiring chats that differ from the training set. The cuts were not moved after seeing this. Details are in `reports/confirm_drift_policy.json`, `reports/confirm_drift_matched.json`, and `reports/verify_drift_policy.json`.
+
+**Retraining.** `POST /retrain` is optional. It adds reviewed examples to the fit and keeps the previous model as `artifacts/model_prev.joblib`. It has not been run on the finished data, and no retrain improvement has been measured.
+
+## Configuration
+
+Set these in `.env`. Every value except the keys has a default in `scamshield/config.py`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GEMINI_API_KEY` (and `_2` to `_9`) | empty | Only for data generation |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Model used by `generate_data.py` |
+| `MODEL_KIND` | `tfidf` | `tfidf` or `embed` |
+| `ENABLE_LINK_CHECK` | `true` | Turn the link checker on or off |
+| `SCAM_THRESHOLD` | `0.50` | Scam line |
+| `UNCERTAIN_LOW` / `UNCERTAIN_HIGH` | `0.35` / `0.65` | Uncertain band |
+| `DRIFT_WINDOW` | `40` | Predictions in the drift window |
+| `DRIFT_MIN_SAMPLES` | `15` | Minimum predictions before drift is assessed |
+| `CONFIDENCE_DROP_ALERT` | `0.10` | Alert on confidence drop |
+| `UNFAMILIAR_RISE_ALERT` | `0.20` | Alert on unfamiliar-rate rise |
+| `UNCERTAIN_RISE_ALERT` | `0.15` | Alert on uncertain-rate rise |
+| `DRIFT_FALLBACK_THRESHOLD` | `0.20` | Review floor while an alert is active |
+| `API_URL` | `http://localhost:8000` | Where the UI finds the API |
+
+The drift cuts and policy are frozen. Don't retune them after looking at a later batch.
+
+## Project layout
+
+```
+scamshield/
+├── scamshield/      Core package: api, model, training, service, context rules,
+│                    indicators, links, monitoring, config
+├── ui/              Streamlit app and styles
+├── scripts/         Train, generate and prepare data, review data, drift checks
+├── tests/           Unit tests
+├── data/
+│   ├── raw/         Generated chats, one file per split and label
+│   ├── processed/   Frozen train, test, shifted, and shifted-stream splits
+│   ├── seed/        Hand-written and reviewed examples
+│   ├── confirm/     Evaluation batches written before scoring
+│   └── demo/        Chats for the UI demo
+├── reports/         Metrics and drift-check results (JSON)
+├── artifacts/       Trained model (git-ignored)
+├── logs/            Prediction log database (git-ignored)
+├── Dockerfile
+└── docker-compose.yml
 ```
 
-Thresholds in `scamshield/config.py` stayed at the defaults (`SCAM_THRESHOLD` 0.50, uncertain band 0.35–0.65, drift window 40, confidence drop 0.10, unfamiliar-rate rise 0.20, uncertain-rate rise 0.15). They were not moved after the shifted numbers. Mean unfamiliarity was added after the shifted stream was inspected, so that stream is development data. The number stored as `novelty_mean_alert` is a one-sided Student-t prediction limit for the mean of a future 40-chat window: validation mean plus `t_{n-1, 0.99} * sd * sqrt(1/40 + 1/n)`. It is not a confidence interval for the validation mean, and the 0.01 tail probability is only the nominal rate under an i.i.d. normal model. It is not a measured false-alarm rate.
+## Testing
 
-## Monitoring and drift response
+```powershell
+uv run python -m unittest discover -s tests
+uv run python scripts/review_data.py
+```
 
-Every `/analyze` and replay is logged in SQLite (`logs/predictions.db`): score, chosen-side score `max(score, 1 − score)`, unfamiliarity, and whether the row was sent to review. Chat text is stored only for rows that enter the queue.
+`review_data.py` is read-only. Run it again whenever a raw data file changes.
 
-Drift uses the last 40 predictions from the current pipeline version only, compared with that version's validation reference. Policy `three-signal-alert-v1` is frozen:
+## Limitations
 
-- **Drift alert:** mean chosen-side score drops by more than 0.10, or unfamiliar rate rises by more than 20 points, or uncertain rate (score between 0.35 and 0.65) rises by more than 15 points.
-- **Advisory:** mean unfamiliarity rises above the window prediction limit stored on the model (`novelty_mean_alert`). The screen says “Input patterns differ from the reference—monitor closely.” That note does not raise the drift alert and does not send a chat to review by itself.
-- **Individual review:** an uncertain score, an unfamiliar chat, or a high-risk link still queues that chat on its own.
+- **Synthetic data.** The model has never seen a real victim's chat. Real scam wording may differ.
+- **Perfect original scores don't transfer.** Use the new-tactic and fresh-scenario results as the guide to behaviour on unfamiliar wording.
+- **A human stays in the loop on purpose.** The raw classifier misses 10 of 40 new-tactic chats, and legitimate onboarding chats are all queued as unfamiliar.
+- **The drift alert is noisy on ordinary hiring chats** that differ from the training set. Treat it as a prompt to look, not proof of a new scam.
+- **Not a verification service.** A low score never means the job is real. The tool doesn't contact recruiters, open links, or stop payments.
+- **Unproven impact.** There is no pilot data yet, so deposits prevented is unmeasured. The proposed first pilot is one university career centre with a person reading the queue.
 
-The window needs at least 15 predictions.
+## AI tools used
 
-The fitted classifier is `tfidf-20261017T080050`. The scoring rules and this policy are pipeline `tfidf-20261017T080050+pipeline-20261017T080050`. Rows logged under the previous pipeline stay in `logs/predictions.db` and are left out of the new window. The working log was not rewritten for this fit.
+- **Gemini** (`GEMINI_MODEL`) writes the synthetic chats through `scripts/generate_data.py`.
+- **Cursor's coding assistant** helped write the service, the review scan, and the docs. The team is responsible for explaining the data, the model, the unfamiliarity score, and the drift rules.
 
-Response today: the alert banner, and uncertain or unfamiliar live chats and shifted-stream replays go to the review queue. While a drift alert is active, chats at or above `DRIFT_FALLBACK_THRESHOLD` (0.20) also go to review. The advisory does not do that.
+## Further reading
 
-The shifted stream is development data for the choice of mean unfamiliarity. On that stream the old normal approximation (limit 0.736) was crossed by 0.738. That gap is too small to treat as confirmation. The frozen Student-t limit, computed from the 137 validation scores only, is 0.739.
-
-A first pair of short repetitive chats (`data/confirm/legit.jsonl` and `shifted.jsonl`) both crossed the limit. That pair is not the length of the training chats, so it mixes format with tactic. The limit was not moved.
-
-A second pair keeps the limit frozen and matches the training shape: 40 chats each, 8 messages each, 20 English and 20 Singlish, median length 163 words for the legitimate control and 168 for the shifted tactics (training medians are 143 and 148). They were scored once into temporary databases. The working log was not used.
-
-| Batch | Mean unfamiliarity | Unfamiliar rate | Chosen-side score | Alert |
-|---|---|---|---|---|
-| Matched legitimate control | 0.775 | 25% | 0.79 | yes, mean unfamiliarity only |
-| Matched shifted tactics | 0.821 | 90% | 0.58 | yes, all four signals |
-
-Both sit above 0.739. The shifted batch is farther out, and its confidence drop and uncertain rate would alert even without the mean-unfamiliarity rule. The matched legitimate control would not. Mean unfamiliarity alone still flags that control. That pair is development evidence for moving mean unfamiliarity to an advisory. The cuts were not moved. Details are in `reports/confirm_drift_matched.json`.
-
-The revised policy was then frozen as `three-signal-alert-v1` and scored once on a new pair written before that score (`reports/policy_scenarios.json`). Same shape: 40 chats, 8 messages, 20 English and 20 Singlish. Word spans were 154–176 for onboarding chats and 158–168 for the new tactics (courier bond, training-seat fee, biometric card, night-shift kit, referral-wallet load). The working log was not used. The limit stayed 0.739.
-
-| Batch | Mean unfamiliarity | Unfamiliar rate | Uncertain rate | Chosen-side score | Drift alert | Advisory |
-|---|---|---|---|---|---|---|
-| Onboarding control | 0.836 | 100% | 50% | 0.67 | yes, all three signals | yes |
-| New tactics | 0.829 | 100% | 50% | 0.64 | yes, all three signals | yes |
-
-The pre-written hope was that ordinary onboarding would stay quiet on the three signals. It did not. Both batches alert, and the onboarding chats are slightly more unfamiliar than the new tactics. On that earlier pipeline, accuracy on the onboarding batch was 1.0 and accuracy on the new tactics was 0.525. The chats were not edited after that score. Details are in `reports/confirm_drift_policy.json`. The later fit, above, is a different pipeline. It does not move these cuts.
-
-A later API check on this same frozen policy (`reports/verify_drift_policy.json`) shows the rules do what they say: mean unfamiliarity alone stays an advisory, each of the three original signals can raise the alert by itself, and uncertain, unfamiliar, and high-risk-link chats still reach review during an advisory. That check does not show the alert can stay quiet on ordinary chats of this shape. Both the onboarding batch and the tactic batch still raise it. These results do not justify moving the cuts.
-
-The Monitoring button **Replay unfamiliar writing** posts the `drift` sample. That sample is out-of-domain text, including biology writing, and it is not a set of job scams. A drift alert from that button shows that unfamiliar writing can trip the window. It is not evidence that the service detects evolving recruitment scams. The shifted-set replay is the job-chat control. The test replay stays out of review and out of retraining.
-
-`scripts/review_data.py` last reported 0 errors and 127 warnings on the raw files. The warnings are possible wrong labels, unrealistic chats, and shifted pretexts that also appear in train or test. They still need a person to read them. The scan does not clear those rows.
-
-The test replay is a monitoring control. Those rows are logged and are not queued, and they cannot be labelled into a later retrain. Retrain (`POST /retrain`) is optional. It keeps the previous file as `artifacts/model_prev.joblib`. It has not been run on the finished data.
-
-## AI tools
-
-- **Gemini** (`GEMINI_MODEL`, default `gemini-3.8-flash`) writes the synthetic chats via `scripts/generate_data.py`. The API key is local.
-- **Cursor's coding assistant** was used while writing the service, the review scan, and these docs. The team still has to be able to explain the data, the model, the unfamiliarity score, and the drift rules.
-
-## Pitch and impact
-
-- Impact, one page: [IMPACT.md](IMPACT.md)
-- Talk track, with the same result lines: [PITCH.md](PITCH.md)
-- Build plan: [PLAN.md](PLAN.md)
+- [IMPACT.md](IMPACT.md): the problem in Sri Lanka, sources, and the pilot path
+- [PITCH.md](PITCH.md): the eight-minute talk track and demo script
+- [PLAN.md](PLAN.md): the build plan
