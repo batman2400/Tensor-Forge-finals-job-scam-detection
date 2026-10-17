@@ -48,9 +48,10 @@ def test_preprocessing_deterministic_and_canonical():
     a = prepare_url("https://WWW.Shop-Alpha.com:443/Path?q=1")
     b = prepare_url("https://WWW.Shop-Alpha.com:443/Path?q=1")
     assert a == b and a["status"] == "ok"
-    assert a["text"] == "https://www.shop-alpha.com:443/Path?q=1"
+    assert a["text"] == "https://www.shop-alpha.com:443"  # host-only policy
     assert a["group"] == "shop-alpha.com"
-    assert prepare_url("shop-alpha.com/x")["text"] == "http://shop-alpha.com/x"
+    assert prepare_url("shop-alpha.com/x")["text"] == "http://shop-alpha.com"
+    assert prepare_url("https://shop-alpha.com/a")["text"] == prepare_url("https://SHOP-alpha.com/b?c=1")["text"]
     assert prepare_url("https://exämple.de/p")["host"] == "xn--exmple-cua.de"
 
 
@@ -102,9 +103,9 @@ def test_corrupt_metadata_unavailable(tmp_path):
 
 def test_split_groups_disjoint_and_dedup():
     rows = []
-    for i in range(300):
-        rows.append({"url": f"https://site{i % 60}.com/p{i}", "label": i % 2})
-    rows.append({"url": "https://site1.com/p1", "label": 1})        # exact dup
+    for i in range(60):
+        rows.append({"url": f"https://site{i}.com/p{i}", "label": i % 2})
+    rows.append({"url": "https://site1.com/p1", "label": 1})        # dup, same label
     rows.append({"url": "https://SITE2.com/p2", "label": 1})        # canonical dup, contradictory
     prepared, stats = prep_script.audit_and_prepare(rows)
     assert stats["duplicates_dropped"] >= 1

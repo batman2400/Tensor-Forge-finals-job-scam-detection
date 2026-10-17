@@ -12,9 +12,11 @@ Policy (version ``PREPROCESSING_VERSION``):
   ``host/path`` link is parsed as ``http://`` + text. Anything else is
   ``not_evaluated``.
 * Model text = lower-case scheme + ``://`` + canonical ASCII/xn-- ``host`` from
-  ``check_urls`` + optional ``:port`` + the remainder of the link after the
-  authority (path/query/fragment, case and encoding preserved, not decoded),
-  truncated to ``MAX_MODEL_TEXT_CHARS``.
+  ``check_urls`` + optional ``:port``. The path/query/fragment is deliberately
+  NOT used: in PhiUSIIL every legitimate URL is a bare homepage, so path
+  characters would let the model learn "has a path => phishing" (a dataset
+  artefact that would flag ordinary job-posting links). The score therefore
+  reflects the host name only.
 * Privacy filter (applied identically to training rows and inference inputs):
   links with userinfo (``@`` in the authority), an e-mail address anywhere, or a
   token-like query parameter name are excluded (``not_evaluated``); the rules
@@ -155,5 +157,5 @@ def _prepare(url) -> dict:
         p = authority.rsplit(":", 1)[1]
         if p.isdigit():
             port = ":" + str(int(p))
-    text = f"{scheme}://{host}{port}{rest}"[:MAX_MODEL_TEXT_CHARS]
+    text = f"{scheme}://{host}{port}"[:MAX_MODEL_TEXT_CHARS]
     return _result("ok", url, text=text, host=host, group=registrable_domain(host))
