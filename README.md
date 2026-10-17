@@ -140,7 +140,7 @@ The verdict comes from the classifier. Phrase lists and the link checker explain
 
 **Unfamiliarity.** One minus the cosine similarity to the nearest training example. The deployed model is fit on 80% of train. The other 20% is used only to set the unfamiliarity cut (95th percentile on that slice) and the drift reference. Reviewed extras can be added to the fit later. They are not added to that 20%.
 
-**Link checker.** Text only, no network calls. `ENABLE_LINK_CHECK=false` turns it off. A missing or crashing checker is skipped. Active flags today: `IP_HOST` (high) and `CLAIMED_COMPANY_MISMATCH` (high) when the chat names a company in `official_domains.json` and the host is not that company's `.example` domain. No flags means risk `low`, which is not "safe". Other planned flags are still open. See `scamshield/links.py`.
+**Link checker.** Text only, no network calls. `ENABLE_LINK_CHECK=false` turns it off. A missing or crashing checker is skipped. No flags means risk `low`, which is not "safe". A strong flag is `high` on its own: `IP_HOST`, `CLAIMED_COMPANY_MISMATCH` (the chat names a company in `official_domains.json` and the host is not that company's domain or a subdomain of it), `LOOKALIKE`, and `APK_DOWNLOAD`. Any number of weak flags stays `medium`: `AT_SYMBOL`, `SHORTENER`, `CHAT_REDIRECT`, `BRAND_IN_SUBDOMAIN`, `FREE_HOSTING_FORM`, `PUNYCODE`, and `MANY_SUBDOMAINS`. See `scamshield/links.py`.
 
 ## Evaluation
 
