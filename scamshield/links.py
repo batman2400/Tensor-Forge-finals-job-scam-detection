@@ -126,6 +126,16 @@ The three company checks need ``data/official_domains.json`` (loaded lazily
 from ``OFFICIAL_DOMAINS_PATH`` relative to this file, cached; see
 ``official_domains_available()``). If it is missing or invalid, they are
 skipped silently: no flag is raised and nothing is reported as verified.
+Entries whose name or domain is not a usable string are ignored; the file
+counts as available only if at least one entry is usable.
+
+Caching and recovery: the file is read on first use and the result (also a
+failed load) is cached for the life of the process. Edits or a repaired
+file are picked up only after ``reload_official_domains()`` or a restart.
+For integration, call ``official_domains_available()`` and, if it returns
+False, show something like "Company-domain checks unavailable" so an empty
+flag list is not read as "company verified". ``check_urls()`` output is the
+same shape in both cases.
 
 All domain lists match the exact host or a genuine subdomain on a label
 boundary (``host == d or host.endswith("." + d)``), so ``notbit.ly`` does
@@ -161,8 +171,8 @@ import re
 from urllib.parse import unquote, unquote_to_bytes
 from pathlib import Path
 
-__all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH",
-           "FLAG_CODES"]
+__all__ = ["check_urls", "official_domains_available", "reload_official_domains",
+           "OFFICIAL_DOMAINS_PATH", "FLAG_CODES"]
 
 #: Company -> official domain mapping. Missing/invalid file => company checks
 #: (CLAIMED_COMPANY_MISMATCH, LOOKALIKE, BRAND_IN_SUBDOMAIN) are skipped.
@@ -654,8 +664,24 @@ def _official_domains() -> tuple:
 
 
 def official_domains_available() -> bool:
-    """True if the official-domain mapping loaded with at least one entry."""
+    """True if the official-domain mapping loaded with at least one usable entry.
+
+    False means CLAIMED_COMPANY_MISMATCH, LOOKALIKE and BRAND_IN_SUBDOMAIN
+    are being skipped, so an empty flag list does NOT mean the company was
+    verified. Triggers the (cached) load if it has not happened yet.
+    """
     return bool(_official_domains())
+
+
+def reload_official_domains() -> bool:
+    """Drop the cached mapping, load it again, and return availability.
+
+    The mapping is read once per process and the result -- including a
+    failed load -- is cached. Call this after fixing or editing the file
+    (or restart the process); otherwise changes are not seen.
+    """
+    _official_domains.cache_clear()
+    return official_domains_available()
 
 
 def _split_registrable(host: str) -> tuple[list[str], str, str]:

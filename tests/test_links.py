@@ -943,3 +943,50 @@ def test_eval_report_is_consistent():
 
 if __name__ == "__main__" and "--eval" in sys.argv:
     print(json.dumps(evaluate(), indent=1))
+
+
+# ------------------------------------ mapping availability (Step 5) ----
+
+def test_availability_helper_tracks_load_state_and_recovery(mapping_path, tmp_path):
+    good = tmp_path / "good.json"
+    good.write_text('{"ABC Holdings": "abcholdings.example"}')
+    mapping_path(tmp_path / "missing.json")
+    assert links.official_domains_available() is False
+    # cached failure: creating the file is not seen until reload
+    (tmp_path / "missing.json").write_text(good.read_text())
+    assert links.official_domains_available() is False
+    assert links.reload_official_domains() is True
+    assert "CLAIMED_COMPANY_MISMATCH" in codes(one("https://x.example/", "ABC Holdings"))
+
+
+def test_availability_helper_with_partially_and_fully_invalid_entries(mapping_path, tmp_path):
+    part = tmp_path / "part.json"
+    part.write_text('{"ABC Holdings": "abcholdings.example", "Bad": 5, "": "x.example", "N": "no dots"}')
+    mapping_path(part)
+    assert links.official_domains_available() is True
+    assert links._official_domains() == (("abc holdings", "abcholdings", "abcholdings.example"),)
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"Bad": 5, "Also bad": ["x.example"]}')
+    mapping_path(bad)
+    assert links.official_domains_available() is False
+
+
+def test_edited_mapping_needs_reload(mapping_path, tmp_path):
+    f = tmp_path / "m.json"
+    f.write_text('{"ABC Holdings": "abcholdings.example"}')
+    mapping_path(f)
+    assert codes(one("https://new-abc.example/", "ABC Holdings")) == ["CLAIMED_COMPANY_MISMATCH"]
+    f.write_text('{"ABC Holdings": "new-abc.example"}')
+    assert codes(one("https://new-abc.example/", "ABC Holdings")) == ["CLAIMED_COMPANY_MISMATCH"]
+    links.reload_official_domains()
+    assert codes(one("https://new-abc.example/", "ABC Holdings")) == []
+
+
+def test_output_shape_identical_when_mapping_unavailable(mapping_path, tmp_path):
+    text = "https://abcholdings-careers.example/ and https://bit.ly/x"
+    with_map = check_urls(text, "ABC Holdings")
+    mapping_path(tmp_path / "none.json")
+    without = check_urls(text, "ABC Holdings")
+    assert [set(r) for r in with_map] == [set(r) for r in without]
+    assert [r["url"] for r in with_map] == [r["url"] for r in without]
+    assert codes(without[0]) == [] and codes(with_map[0]) != []
