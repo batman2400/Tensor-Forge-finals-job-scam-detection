@@ -1,0 +1,177 @@
+{
+  "model_version": "tfidf-20261017T080050+pipeline-20261017T080050",
+  "fit_version": "tfidf-20261017T080050",
+  "threshold": 0.5,
+  "threshold_changed": false,
+  "working_log_used": false,
+  "note": "Raw is the classifier probability. Final is that probability after the context rules. Review is uncertain, unfamiliar, or an explicit credential request. Drift fallback is not included. The development batches were inspected before this fit. fresh_scenarios.jsonl was scored once and was not used to train or to move the threshold.",
+  "sets": {
+    "development_new_tactics": {
+      "n": 40,
+      "scams": 40,
+      "legitimate": 0,
+      "raw_correct": 30,
+      "final_correct": 40,
+      "raw_accuracy": 0.75,
+      "final_accuracy": 1.0,
+      "raw_false_positives": 0,
+      "final_false_positives": 0,
+      "scam_recall_raw": 1.0,
+      "scam_recall_final": 1.0,
+      "reviewed": 20,
+      "review_rate": 0.5,
+      "silent_scam_misses": 0,
+      "rule_changed_the_label": [
+        {
+          "id": "policy-shifted-0",
+          "lang": "en",
+          "category": "policy-shifted-courier",
+          "label": 1,
+          "raw": 0.498,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-2",
+          "lang": "en",
+          "category": "policy-shifted-biometric",
+          "label": 1,
+          "raw": 0.496,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-5",
+          "lang": "en",
+          "category": "policy-shifted-courier",
+          "label": 1,
+          "raw": 0.488,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-7",
+          "lang": "en",
+          "category": "policy-shifted-biometric",
+          "label": 1,
+          "raw": 0.494,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-10",
+          "lang": "en",
+          "category": "policy-shifted-courier",
+          "label": 1,
+          "raw": 0.474,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-12",
+          "lang": "en",
+          "category": "policy-shifted-biometric",
+          "label": 1,
+          "raw": 0.484,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-13",
+          "lang": "en",
+          "category": "policy-shifted-kit",
+          "label": 1,
+          "raw": 0.488,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-15",
+          "lang": "en",
+          "category": "policy-shifted-courier",
+          "label": 1,
+          "raw": 0.491,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-17",
+          "lang": "en",
+          "category": "policy-shifted-biometric",
+          "label": 1,
+          "raw": 0.486,
+          "final": 0.72,
+          "review_reason": null
+        },
+        {
+          "id": "policy-shifted-18",
+          "lang": "en",
+          "category": "policy-shifted-kit",
+          "label": 1,
+          "raw": 0.472,
+          "final": 0.72,
+          "review_reason": null
+        }
+      ],
+      "misses": [],
+      "threshold": 0.5
+    },
+    "development_onboarding": {
+      "n": 40,
+      "scams": 0,
+      "legitimate": 40,
+      "raw_correct": 40,
+      "final_correct": 40,
+      "raw_accuracy": 1.0,
+      "final_accuracy": 1.0,
+      "raw_false_positives": 0,
+      "final_false_positives": 0,
+      "scam_recall_raw": null,
+      "scam_recall_final": null,
+      "reviewed": 40,
+      "review_rate": 1.0,
+      "silent_scam_misses": 0,
+      "rule_changed_the_label": [],
+      "misses": [],
+      "threshold": 0.5
+    },
+    "fresh_scenarios": {
+      "n": 16,
+      "scams": 8,
+      "legitimate": 8,
+      "raw_correct": 14,
+      "final_correct": 16,
+      "raw_accuracy": 0.875,
+      "final_accuracy": 1.0,
+      "raw_false_positives": 0,
+      "final_false_positives": 0,
+      "scam_recall_raw": 1.0,
+      "scam_recall_final": 1.0,
+      "reviewed": 7,
+      "review_rate": 0.4375,
+      "silent_scam_misses": 0,
+      "rule_changed_the_label": [
+        {
+          "id": "fresh-s-equipment",
+          "lang": "en",
+          "category": "equipment_bond",
+          "label": 1,
+          "raw": 0.446,
+          "final": 0.72,
+          "review_reason": "unfamiliar"
+        },
+        {
+          "id": "fresh-s-clinic",
+          "lang": "en",
+          "category": "clinic_fee",
+          "label": 1,
+          "raw": 0.46,
+          "final": 0.72,
+          "review_reason": "unfamiliar"
+        }
+      ],
+      "misses": [],
+      "threshold": 0.5
+    }
+  }
+}

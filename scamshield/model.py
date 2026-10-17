@@ -39,6 +39,9 @@ class Detector:
         self.train_vectors = None
         self.novelty_threshold: float = 1.0
         self.reference: dict = {}
+        # fit_version identifies the fitted classifier. version identifies the
+        # whole scoring pipeline (weights, context rules, and drift reference).
+        self.fit_version = ""
         self.version = ""
 
     def _encode(self, texts: list[str], fit: bool = False):
@@ -64,11 +67,16 @@ class Detector:
         X = self._encode(texts, fit=True)
         self.clf.fit(X, labels)
         self.train_vectors = X
-        self.version = f"{self.kind}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+        self.fit_version = f"{self.kind}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+        self.version = self.fit_version
         return self
 
     def predict_proba(self, texts: list[str]) -> np.ndarray:
-        return self.clf.predict_proba(self._encode(texts))[:, 1]
+        raw = self.clf.predict_proba(self._encode(texts))[:, 1]
+        # Refusals, questions, and payment lines the word weights misread.
+        from .context import adjust_score
+
+        return np.array([adjust_score(text, float(score)) for text, score in zip(texts, raw)], dtype=float)
 
     def novelty(self, texts: list[str]) -> np.ndarray:
         """1 - cosine similarity to the nearest training example (0 = seen before, 1 = nothing similar)."""

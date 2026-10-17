@@ -1,0 +1,53 @@
+{
+  "pipeline_version": "tfidf-20261017T054258+pipeline-20261017T073134",
+  "fit_version": "tfidf-20261017T054258",
+  "novelty_mean_alert": 0.7391783426184554,
+  "mean_novelty_validation": 0.718414050843763,
+  "novelty_limit": "one-sided Student-t prediction limit for the mean of a future window of 40",
+  "novelty_assumptions": "i.i.d. normal validation scores; the future window is the same size and the same distribution; nominal tail probability only. Not a measured false-alarm rate. Mean unfamiliarity was chosen after the shifted stream was inspected, so that stream is development data. Under three-signal-alert-v1 this limit is an advisory. It does not raise the drift alert and does not route a chat to review by itself.",
+  "working_log": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\logs\\predictions.db",
+  "development_stream_replayed": false,
+  "drift_policy": "three-signal-alert-v1",
+  "threshold_changed": false,
+  "scenarios_file": "reports/policy_scenarios.json",
+  "hypothesis_held": false,
+  "note": "Both fresh batches raised the three original signals and the advisory. The legitimate onboarding control was not quiet. The chats were not edited after this score, and the cuts were not moved.",
+  "legit_control": {
+    "source": "confirm:legit",
+    "n": 40,
+    "accuracy": 1.0,
+    "drift": true,
+    "alerts": [
+      "Mean confidence fell from 0.86 to 0.67",
+      "Unfamiliar inputs rose from 5% to 100%",
+      "Uncertain predictions rose from 1% to 50%"
+    ],
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "mean_novelty": 0.8363022587865897,
+    "mean_confidence": 0.668953394950795,
+    "unfamiliar_rate": 1.0,
+    "uncertain_rate": 0.5,
+    "temporary_db": "C:\\Users\\mohan\\AppData\\Local\\Temp\\tmpa_4wkp85\\confirm.db"
+  },
+  "shifted_confirm": {
+    "source": "confirm:shifted",
+    "n": 40,
+    "accuracy": 0.525,
+    "drift": true,
+    "alerts": [
+      "Mean confidence fell from 0.86 to 0.64",
+      "Unfamiliar inputs rose from 5% to 100%",
+      "Uncertain predictions rose from 1% to 50%"
+    ],
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "mean_novelty": 0.8291255570561115,
+    "mean_confidence": 0.6375497279698024,
+    "unfamiliar_rate": 1.0,
+    "uncertain_rate": 0.5,
+    "temporary_db": "C:\\Users\\mohan\\AppData\\Local\\Temp\\tmpwk_frfzw\\confirm.db"
+  }
+}

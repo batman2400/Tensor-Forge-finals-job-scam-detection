@@ -15,13 +15,14 @@ log = logging.getLogger("scamshield")
 app = FastAPI(title="ScamShield LK", version="0.1.0")
 analyzer = Analyzer()
 
-REPLAY_SETS = {"test": "test.jsonl", "shifted": "shifted_stream.jsonl"}
+REPLAY_SETS = {"test": "test.jsonl", "shifted": "shifted_stream.jsonl", "drift": "drift_demo.jsonl"}
 
 
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=20000)
     source: str = "live"
     claimed_company: str | None = None
+    expected_domain: str | None = None
 
 
 class ReviewRequest(BaseModel):
@@ -40,15 +41,24 @@ def _require_model():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": analyzer.ready,
-            "model_version": analyzer.detector.version if analyzer.ready else None}
+    detector = analyzer.detector
+    return {
+        "status": "ok",
+        "model_loaded": analyzer.ready,
+        "model_version": detector.version if analyzer.ready else None,
+        "fit_version": (getattr(detector, "fit_version", "") or detector.version) if analyzer.ready else None,
+        "drift_policy": detector.reference.get("drift_policy") if analyzer.ready else None,
+    }
 
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
     _require_model()
     try:
-        result = analyzer.analyze(req.text, source=req.source, claimed_company=req.claimed_company)
+        result = analyzer.analyze(
+            req.text, source=req.source, claimed_company=req.claimed_company,
+            expected_domain=req.expected_domain,
+        )
     except ValueError as e:
         raise HTTPException(422, str(e))
     log.info("prediction id=%s label=%s score=%.3f review=%s",
@@ -59,7 +69,13 @@ def analyze(req: AnalyzeRequest):
 @app.post("/links")
 def links(req: AnalyzeRequest):
     company = req.claimed_company or infer_claimed_company(req.text)
-    result = safe_check_urls(req.text, claimed_company=company)
+    try:
+        from .links import canonical_expected_domain
+
+        adviser_domain = canonical_expected_domain(req.expected_domain)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    result = safe_check_urls(req.text, claimed_company=company, expected_domain=adviser_domain)
     if result is None:
         raise HTTPException(503, "Link checker disabled or unavailable")
     return result
@@ -71,24 +87,35 @@ def replay(req: ReplayRequest):
     _require_model()
     if req.dataset not in REPLAY_SETS:
         raise HTTPException(400, f"dataset must be one of {list(REPLAY_SETS)}")
-    path = config.PROCESSED_DIR / REPLAY_SETS[req.dataset]
+    if req.dataset == "drift":
+        path = config.DEMO_DIR / REPLAY_SETS[req.dataset]
+    else:
+        path = config.PROCESSED_DIR / REPLAY_SETS[req.dataset]
     if not path.exists():
         raise HTTPException(404, f"{path.name} not found; run scripts/prepare_data.py")
     rows = read_jsonl(path)[: req.limit]
     correct = routed = 0
+    # Test replay is a control. The drift sample is unfamiliar writing used only
+    # to move the monitoring window. Neither is queued for review.
+    allow_review = req.dataset == "shifted"
     for row in rows:
-        # The held-out test set is a monitoring control only. It is not queued for review.
         r = analyzer.analyze(
             to_display_text(row["messages"]), source=f"replay:{req.dataset}", timeline=False,
-            allow_review=req.dataset != "test",
+            allow_review=allow_review,
         )
-        correct += int((r["label"] == "scam") == bool(row["label"]))
+        if req.dataset != "drift":
+            correct += int((r["label"] == "scam") == bool(row["label"]))
         routed += int(r["routed_to_review"])
     drift = monitoring.drift_status(analyzer.detector.reference, model_version=analyzer.detector.version)
     if drift["drift"]:
         log.warning("DRIFT ALERT: %s", "; ".join(drift["alerts"]))
-    return {"dataset": req.dataset, "n": len(rows), "accuracy": correct / max(len(rows), 1),
-            "routed_to_review": routed, "eligible_for_retrain": req.dataset != "test", "drift": drift}
+    elif drift.get("advisory"):
+        log.info("DRIFT ADVISORY: %s", "; ".join(drift["advisory"]))
+    result = {"dataset": req.dataset, "n": len(rows), "routed_to_review": routed,
+              "eligible_for_retrain": req.dataset == "shifted", "drift": drift}
+    if req.dataset != "drift":
+        result["accuracy"] = correct / max(len(rows), 1)
+    return result
 
 
 @app.get("/monitoring")

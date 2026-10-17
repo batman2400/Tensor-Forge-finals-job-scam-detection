@@ -1,13 +1,24 @@
 {
   "tfidf": {
-    "model_version": "tfidf-20261017T054258",
+    "model_version": "tfidf-20261017T080050+pipeline-20261017T080050",
     "kind": "tfidf",
     "reference": {
-      "model_version": "tfidf-20261017T054258",
+      "model_version": "tfidf-20261017T080050+pipeline-20261017T080050",
+      "fit_version": "tfidf-20261017T080050",
       "n_validation": 137,
-      "mean_confidence": 0.8579557874725874,
-      "uncertain_rate": 0.029197080291970802,
-      "unfamiliar_rate": 0.051094890510948905
+      "mean_confidence": 0.8610653517983269,
+      "uncertain_rate": 0.014598540145985401,
+      "unfamiliar_rate": 0.051094890510948905,
+      "mean_novelty": 0.7174805472331047,
+      "novelty_sd": 0.04905711869328405,
+      "novelty_df": 136,
+      "novelty_alpha": 0.01,
+      "novelty_critical": 2.3540794673537517,
+      "novelty_mean_alert": 0.7382353929898983,
+      "novelty_limit": "one-sided Student-t prediction limit for the mean of a future window of 40",
+      "novelty_role": "advisory",
+      "drift_policy": "three-signal-alert-v1",
+      "novelty_assumptions": "i.i.d. normal validation scores; the future window is the same size and the same distribution; nominal tail probability only. Not a measured false-alarm rate. Mean unfamiliarity was chosen after the shifted stream was inspected, so that stream is development data. Under three-signal-alert-v1 this limit is an advisory. It does not raise the drift alert and does not route a chat to review by itself."
     },
     "test": {
       "n": 154,
@@ -26,7 +37,7 @@
         ]
       ],
       "false_positives": 0,
-      "mean_confidence": 0.8519501746164005,
+      "mean_confidence": 0.8535484784913239,
       "uncertain_rate": 0.012987012987012988,
       "unfamiliar_rate": 0.032467532467532464,
       "review_rate": 0.045454545454545456,
@@ -49,68 +60,31 @@
         ]
       ],
       "false_positives": 0,
-      "mean_confidence": 0.8277115241034617,
-      "uncertain_rate": 0.02040816326530612,
-      "unfamiliar_rate": 0.08163265306122448,
+      "mean_confidence": 0.8271214911163233,
+      "uncertain_rate": 0.0,
+      "unfamiliar_rate": 0.10204081632653061,
       "review_rate": 0.10204081632653061,
       "roc_auc": 1.0
     }
   },
   "embed": {
+    "note": "Previous comparison, fit embed-20261017T054515. Not retrained with the reviewed tactics.",
     "model_version": "embed-20261017T054515",
     "kind": "embed",
-    "reference": {
-      "model_version": "embed-20261017T054515",
-      "n_validation": 137,
-      "mean_confidence": 0.8494938015937805,
-      "uncertain_rate": 0.058394160583941604,
-      "unfamiliar_rate": 0.051094890510948905
-    },
     "test": {
       "n": 154,
       "accuracy": 0.974025974025974,
       "precision": 0.9615384615384616,
       "recall": 0.9868421052631579,
-      "f1": 0.974025974025974,
-      "confusion_matrix": [
-        [
-          75,
-          3
-        ],
-        [
-          1,
-          75
-        ]
-      ],
-      "false_positives": 3,
-      "mean_confidence": 0.8418892025947571,
-      "uncertain_rate": 0.07142857142857142,
-      "unfamiliar_rate": 0.025974025974025976,
-      "review_rate": 0.09090909090909091,
-      "roc_auc": 0.9978070175438597
+      "false_positives": 3
     },
     "shifted": {
       "n": 98,
       "accuracy": 0.9693877551020408,
       "precision": 0.9411764705882353,
       "recall": 1.0,
-      "f1": 0.9696969696969697,
-      "confusion_matrix": [
-        [
-          47,
-          3
-        ],
-        [
-          0,
-          48
-        ]
-      ],
-      "false_positives": 3,
-      "mean_confidence": 0.7902426719665527,
-      "uncertain_rate": 0.19387755102040816,
-      "unfamiliar_rate": 0.01020408163265306,
-      "review_rate": 0.20408163265306123,
-      "roc_auc": 1.0
+      "false_positives": 3
     }
-  }
+  },
+  "deployed_kind": "tfidf"
 }

@@ -1,0 +1,47 @@
+{
+  "pipeline_version": "tfidf-20261017T080050+pipeline-20261017T080050",
+  "fit_version": "tfidf-20261017T080050",
+  "novelty_mean_alert": 0.7382353929898983,
+  "mean_novelty_validation": 0.7174805472331047,
+  "novelty_limit": "one-sided Student-t prediction limit for the mean of a future window of 40",
+  "novelty_assumptions": "i.i.d. normal validation scores; the future window is the same size and the same distribution; nominal tail probability only. Not a measured false-alarm rate. Mean unfamiliarity was chosen after the shifted stream was inspected, so that stream is development data. Under three-signal-alert-v1 this limit is an advisory. It does not raise the drift alert and does not route a chat to review by itself.",
+  "working_log": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\logs\\predictions.db",
+  "development_stream_replayed": false,
+  "drift_policy": "three-signal-alert-v1",
+  "threshold_changed": false,
+  "legit_control": {
+    "source": "confirm:legit",
+    "n": 40,
+    "accuracy": 1.0,
+    "drift": true,
+    "alerts": [
+      "Mean confidence fell from 0.86 to 0.65",
+      "Unfamiliar inputs rose from 5% to 98%",
+      "Uncertain predictions rose from 1% to 50%"
+    ],
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "mean_novelty": 0.8161298217634796,
+    "mean_confidence": 0.6491907791676371,
+    "unfamiliar_rate": 0.975,
+    "uncertain_rate": 0.5,
+    "temporary_db": "C:\\Users\\mohan\\AppData\\Local\\Temp\\tmpyk8ndj2t\\confirm.db"
+  },
+  "shifted_confirm": {
+    "source": "confirm:shifted",
+    "n": 40,
+    "accuracy": 1.0,
+    "drift": true,
+    "alerts": [
+      "Mean confidence fell from 0.86 to 0.64",
+      "Uncertain predictions rose from 1% to 50%"
+    ],
+    "advisory": [],
+    "mean_novelty": 0.554256148969297,
+    "mean_confidence": 0.6419037054699148,
+    "unfamiliar_rate": 0.0,
+    "uncertain_rate": 0.5,
+    "temporary_db": "C:\\Users\\mohan\\AppData\\Local\\Temp\\tmpq1sd5kwf\\confirm.db"
+  }
+}

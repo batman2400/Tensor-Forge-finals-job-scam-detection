@@ -85,16 +85,23 @@ def drift_status(reference: dict, window: int = config.DRIFT_WINDOW, model_versi
         "model_version": model_version,
         "reference": reference,
         "alerts": [],
+        "advisory": [],
         "drift": False,
+        "drift_policy": (reference or {}).get("drift_policy") or config.DRIFT_POLICY,
     }
     ref_version = (reference or {}).get("model_version")
     if model_version and ref_version and ref_version != model_version:
         status["reference_mismatch"] = True
         return status
     if n == 0:
+        status["note"] = (
+            "No predictions from this pipeline version. Older rows stay in the log "
+            "and are not compared with this reference."
+        )
         return status
     current = {
         "mean_confidence": sum(r["confidence"] for r in rows) / n,
+        "mean_novelty": sum(r["novelty"] for r in rows) / n,
         "unfamiliar_rate": sum(r["unfamiliar"] for r in rows) / n,
         "uncertain_rate": sum(r["uncertain"] for r in rows) / n,
         "scam_rate": sum(r["label"] == "scam" for r in rows) / n,
@@ -110,7 +117,14 @@ def drift_status(reference: dict, window: int = config.DRIFT_WINDOW, model_versi
         alerts.append(f"Unfamiliar inputs rose from {reference['unfamiliar_rate']:.0%} to {current['unfamiliar_rate']:.0%}")
     if current["uncertain_rate"] - reference["uncertain_rate"] > config.UNCERTAIN_RISE_ALERT:
         alerts.append(f"Uncertain predictions rose from {reference['uncertain_rate']:.0%} to {current['uncertain_rate']:.0%}")
+    # Mean unfamiliarity is advisory. It does not set drift, so it does not
+    # add drift-fallback review on its own.
+    advisory = []
+    cut = reference.get("novelty_mean_alert")
+    if cut is not None and current["mean_novelty"] > cut:
+        advisory.append(config.ADVISORY_NOVELTY_MESSAGE)
     status["alerts"] = alerts
+    status["advisory"] = advisory
     status["drift"] = bool(alerts)
     return status
 

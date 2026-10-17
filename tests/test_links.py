@@ -10,7 +10,41 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    import unittest
+
+    class _Mark:
+        def parametrize(self, *args, **kwargs):
+            def deco(fn):
+                return fn
+            return deco
+
+        def xfail(self, *args, **kwargs):
+            return None
+
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    class _Pytest:
+        mark = _Mark()
+
+        @staticmethod
+        def fixture(*args, **kwargs):
+            def deco(fn):
+                return fn
+            return deco
+
+        @staticmethod
+        def param(*args, **kwargs):
+            return args[0] if args else None
+
+    pytest = _Pytest()
+
+    class TestLinks(unittest.TestCase):
+        def test_requires_pytest(self):
+            self.skipTest("pytest is not installed")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -276,9 +310,9 @@ def test_brand_as_hyphen_token_and_squashed_name():
     assert "BRAND_IN_SUBDOMAIN" in codes(one("https://abcholdings.com.lk/"))
 
 
-def test_brand_substring_in_registrable_label_is_not_brand_flag():
-    # Documented limitation: only hyphen tokens / whole label are checked.
-    assert "BRAND_IN_SUBDOMAIN" not in codes(one("https://notabcholdings.example/"))
+def test_brand_glued_or_split_by_hyphens_is_flagged():
+    assert "BRAND_IN_SUBDOMAIN" in codes(one("https://notabcholdings.example/"))
+    assert codes(one("https://abc-holdings-careers.example/")) == ["BRAND_IN_SUBDOMAIN"]
 
 
 @pytest.mark.parametrize("url,label", [("https://abcho1dings.example/apply", "abcho1dings"),
@@ -402,8 +436,8 @@ def test_flag_order_is_fixed():
                         "BRAND_IN_SUBDOMAIN", "MANY_SUBDOMAINS"]
     order = list(links.FLAG_CODES)
     assert order == ["IP_HOST", "AT_SYMBOL", "SHORTENER", "CHAT_REDIRECT",
-                     "APK_DOWNLOAD", "CLAIMED_COMPANY_MISMATCH", "LOOKALIKE",
-                     "BRAND_IN_SUBDOMAIN", "FREE_HOSTING_FORM", "PUNYCODE",
+                     "APK_DOWNLOAD", "ADVISER_DOMAIN_MISMATCH", "CLAIMED_COMPANY_MISMATCH",
+                     "LOOKALIKE", "BRAND_IN_SUBDOMAIN", "FREE_HOSTING_FORM", "PUNYCODE",
                      "MANY_SUBDOMAINS"]
 
 
@@ -530,7 +564,7 @@ def test_percent_encoded_unicode_host_still_punycode():
     assert codes(r) == ["LOOKALIKE", "PUNYCODE"]
 
 
-@pytest.mark.parametrize("sep", [",", ";", ", ", ";\n"])
+@pytest.mark.parametrize("sep", [",", ";", "|", ", ", ";\n"])
 def test_punctuation_separated_urls_are_both_found(sep):
     res = check_urls(f"https://abcholdings.example{sep}https://198.51.100.7/pay")
     assert [r["url"] for r in res] == ["https://abcholdings.example",
@@ -634,8 +668,10 @@ ALL_FLAG_SAMPLES = [
 
 def test_reasons_never_claim_fraud_and_cover_every_flag():
     seen = set()
-    for url, company in ALL_FLAG_SAMPLES:
-        for f in one(url, company)["flags"]:
+    samples = [(url, company, None) for url, company in ALL_FLAG_SAMPLES]
+    samples.append(("https://jobs-portal.example/apply", None, "northwind.example"))
+    for url, company, expected in samples:
+        for f in check_urls(url, company, expected_domain=expected)[0]["flags"]:
             seen.add(f["code"])
             low = f["reason"].lower()
             for banned in ("is a scam", "is fraud", "fraudulent", "is fake.", "definitely",
@@ -751,10 +787,10 @@ EVAL_CASES = [
      "official domain used as a prefix of another domain", False),
     ("C6", "brand", "https://notabcholdings.example/", ABC, None,
      [("https://notabcholdings.example/", "notabcholdings.example", [MIS, BRAND])],
-     "brand glued inside another label: mismatch fires, brand rule only matches hyphen tokens", True),
+     "brand glued onto the front of another label", False),
     ("C7", "brand", "https://abc-holdings-careers.example/", None, None,
      [("https://abc-holdings-careers.example/", "abc-holdings-careers.example", [BRAND])],
-     "brand split by hyphens is not recognised", True),
+     "brand split across consecutive hyphen parts", False),
     ("C8", "brand", "https://serendiblogistics.com.lk/", None, None,
      [("https://serendiblogistics.com.lk/", "serendiblogistics.com.lk", [BRAND])],
      "same brand label under a different suffix", False),
@@ -826,7 +862,7 @@ EVAL_CASES = [
      "punctuation and nested URL inside one link", False),
     ("F8", "text", "Links: https://good.example|https://198.51.100.7/pay", None, None,
      [("https://good.example", "good.example", []), ("https://198.51.100.7/pay", "198.51.100.7", [IP])],
-     "pipe-glued links: only the second is recovered", True),
+     "pipe-glued links are both recovered", False),
     ("F9", "text", "Apply on careers.abcholdings.lk/apply", None, None,
      [("careers.abcholdings.lk/apply", "careers.abcholdings.lk", [BRAND])], "brand under another TLD", False),
     ("F10", "text", "", None, None, [], "empty text", False),

@@ -1,0 +1,37 @@
+{
+  "chosen_before_scoring": true,
+  "scored": false,
+  "drift_policy": "three-signal-alert-v1",
+  "thresholds_changed": false,
+  "development_evidence_not_rescored": [
+    "data/confirm/legit.jsonl",
+    "data/confirm/shifted.jsonl",
+    "data/confirm/matched_legit.jsonl",
+    "data/confirm/matched_shifted.jsonl"
+  ],
+  "shape": {
+    "n": 40,
+    "messages": 8,
+    "english": 20,
+    "singlish": 20,
+    "word_band": [
+      140,
+      185
+    ]
+  },
+  "legit_scenario": "Branch onboarding. Bus stop, shirt colour, reception name, and payroll week. No fee. Harmless format change from an interview-slot chat.",
+  "shifted_scenario": "Same application frame, then a payment the matched development pair did not use: courier bond, training-seat fee, biometric card, night-shift kit, or referral-wallet load.",
+  "hypothesis_before_scoring": "The legitimate batch is ordinary hiring with a clear no-fee line, so it is not expected to trip the confidence, unfamiliar-rate, or uncertain-rate cuts. Mean unfamiliarity may still be advisory. The shifted batch uses new payment demands. Whether those demands cross the frozen cuts is what the one score measures. The chats will not be edited after that score.",
+  "word_span": {
+    "legit": [
+      154,
+      172,
+      176
+    ],
+    "shifted": [
+      158,
+      163,
+      168
+    ]
+  }
+}

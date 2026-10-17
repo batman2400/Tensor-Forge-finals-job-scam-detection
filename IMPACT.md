@@ -1,6 +1,6 @@
 # Impact
 
-ScamShield LK is a check a career adviser can run on a recruitment chat a student has already received. The figures below are published counts of who is exposed. They are not product results, and we are not claiming a rupee total prevented.
+ScamShield LK is an adviser-support prototype. A career adviser pastes a recruitment chat a student has already received, and a person reviews uncertain chats, unfamiliar chats, and explicit requests for a password or one-time code. On the inspected new-tactic batch the classifier itself is right on 30 of 40 chats. The final wording line is right on 40 of 40, and 20 of those 40 still go to review. On a one-time fresh set the classifier is right on 14 of 16 and the final line on 16 of 16, with 7 of 16 reviewed. Ordinary onboarding chats are labelled correctly and still all go to review. The figures below are published counts of who is exposed. They are not product results, and we are not claiming a rupee total prevented.
 
 ## Who
 
@@ -22,7 +22,7 @@ Sources: Daily Mirror, 28 June 2025, https://www.dailymirror.lk/front-page/Rise-
 
 ## A pilot that fits the product
 
-The first deployment is one university career centre, not a national bot and not the 143,203 undergraduates. Staff paste a chat the student brings to the desk. The tool shows a scam signal or the absence of one, the phrases it used, and the score after each message. Unfamiliar wording goes to a person at the desk. We do not open links or contact the recruiter.
+The first deployment is one university career centre, not a national bot and not the 143,203 undergraduates. Staff paste a chat the student brings to the desk. The tool shows a scam signal or the absence of one, the phrases it used, and the score after each message. Unfamiliar wording, an uncertain score, or a request for a password or one-time code goes to a person at the desk. We do not open links or contact the recruiter. The wording score is a draft for that person. It is not a decision that a job is safe.
 
 What a pilot would count, and what we do not have yet: chats checked per week, cases where the student had been asked to pay and the tool showed a scam signal, and deposits the student then chose not to send.
 

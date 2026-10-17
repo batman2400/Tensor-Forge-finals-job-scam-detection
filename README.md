@@ -1,10 +1,10 @@
 # ScamShield LK
 
-An ML service that warns Sri Lankan job seekers when a recruitment chat turns into a task-job scam, monitors shifting scam tactics, and routes uncertain cases to human review.
+An adviser-support prototype. A career adviser pastes a recruitment chat a student has already received. The service proposes a wording score, shows the phrases behind it, and sends uncertain, unfamiliar, and high-risk-link chats to a person. It does not message anyone, open links, or send money.
 
-**Who it is for:** university students, school leavers, and other job seekers who receive "part-time online job" offers on WhatsApp, Telegram, and social media. A career adviser can paste the chat. The service does not message anyone, open links, or send money.
+**Who it is for:** university students, school leavers, and other job seekers who receive "part-time online job" offers on WhatsApp, Telegram, and social media. The person using the screen is the adviser, not the student alone.
 
-The score on a single chat is not a measured accuracy. Held-out numbers are in the tables below. They come from the frozen splits, not from a raw file.
+The deployed pipeline is `tfidf-20261017T080050+pipeline-20261017T080050`. The classification line is still 0.50. Read the raw classifier and the final verdict separately. On the inspected new-tactic batch the raw classifier is **30 of 40** and the final verdict is **40 of 40**, with 0 false positives. Ten of those final hits are English chats the payment rule lifts to 0.72; those ten are not queued. A one-time fresh set, not used for training, is raw **14 of 16** and final **16 of 16**, with 0 false positives and 7 of 16 sent to review. The original held-out test is still **154 of 154** and the original shifted eval is **98 of 98**. A "no strong scam signal" line is a wording assessment, not a statement that the recruiter is genuine.
 
 ## Start here
 
@@ -134,7 +134,7 @@ FastAPI (port 8000)
              -> SQLite log -> drift check -> review queue
 ```
 
-The verdict comes from the classifier. Phrase lists and the link checker explain a chat. They do not decide the label.
+The verdict comes from the classifier. A short check then moves the score when the chat is a refusal, a question, or a report of a scam, or when it tells the reader to send money without the usual fee words. A greeting with none of those words stays under the line. Phrase lists and the link checker explain a chat. They do not decide the label. Phrase hits inside a refusal are not shown.
 
 **Model.** Default: word and character TF-IDF plus logistic regression. Optional: `paraphrase-multilingual-MiniLM-L12-v2` embeddings plus logistic regression (`MODEL_KIND=embed`).
 
@@ -144,7 +144,21 @@ The verdict comes from the classifier. Phrase lists and the link checker explain
 
 ## Evaluation
 
-Filled from the frozen splits. The first table is the saved model, word and character TF-IDF plus logistic regression (`artifacts/model.joblib`, version `tfidf-20261017T054258`). `reports/metrics.json` is that run, including the embedding comparison. Quote the tables, which match that file.
+Quote the layer table first, then the frozen-split tables. The saved model is word and character TF-IDF plus logistic regression (`artifacts/model.joblib`, fit `tfidf-20261017T080050`, pipeline `tfidf-20261017T080050+pipeline-20261017T080050`). The threshold was not lowered. `reports/layer_comparison.json` is this run. `reports/metrics.json` is the frozen-split run. The embedding block in that file is the earlier comparison and was not retrained.
+
+Reviewed examples in `data/seed/reviewed_tactics.jsonl` were added only to the fit. The 40 new-tactic chats and the 40 onboarding chats stayed development data. `data/confirm/fresh_scenarios.jsonl` was written before this score and was not used to train or to move a threshold.
+
+| Set | Role | Raw correct | Final correct | False positives | Sent to review | Silent scam misses |
+|---|---|---|---|---|---|---|
+| New tactics (`policy_shifted.jsonl`) | development, already inspected | 30 of 40 | 40 of 40 | 0 | 20 of 40 | 0 |
+| Onboarding (`policy_legit.jsonl`) | development, already inspected | 40 of 40 | 40 of 40 | 0 | 40 of 40 | 0 |
+| Fresh scenarios (`fresh_scenarios.jsonl`) | scored once | 14 of 16 | 16 of 16 | 0 | 7 of 16 | 0 |
+
+Raw is the classifier probability. Final is that probability after the context rules. On the tactic batch the ten chats the rule changes are English, with raw scores from 0.472 to 0.498 lifted to 0.72, and none of those ten is queued. The Singlish half of that batch is inside the 30 raw hits. On the fresh set the two rule changes are an equipment bond (raw 0.446) and a joining clinic fee (raw 0.460). Both are unfamiliar, so both still reach review. The onboarding batch is all legitimate and all 40 still go to review, so a correct label there does not by itself save the adviser work.
+
+An explicit password, PIN, or one-time-code request is the review reason `credential-request`. It does not change the classifier score. "Give me your banking password and the one-time code" scores 0.648 before and after the rules, and the queue reason is `uncertain,credential-request`. "They asked me to tell you to pay Rs 10000 to unlock your earnings" stays at its classifier score of 0.692, which is over the line. "Do not share an OTP" is not a credential request.
+
+The tables below are the original frozen splits. They are real, and they are a different test from the fresh tactics.
 
 | Set | n | Precision (scam) | Recall (scam) | False positives | Review rate |
 |---|---|---|---|---|---|
@@ -160,7 +174,7 @@ False positives means legitimate chats scored as a scam signal. Review rate is t
 
 The embedding model also has 3 false positives on the shifted eval (47 of 50 legitimate chats scored as legitimate). Its scam recall there is 1.000 (48 of 48).
 
-TF-IDF is correct on every held-out chat, including the shifted eval half. That is a property of this synthetic set, which reuses a lot of the same fee and task wording. It is not evidence that a real WhatsApp chat would be scored this cleanly. The embedding model is where the misses are. Some train and test scams already use a pretext reserved for the shifted set (VIP, tax clearance, combo or lucky order). Those chats were left in, so the shifted eval is not a fully unseen-pretext test.
+TF-IDF is correct on every chat in the original held-out test and the original shifted eval. Those chats reuse a lot of the same fee and task wording. The fresh tactic batch is the measurement on different wording, and that is 21 of 40. Some train and test scams already use a pretext reserved for the shifted set (VIP, tax clearance, combo or lucky order), so the original shifted eval is not a fully unseen-pretext test. The embedding comparison is a second model on the original splits only. It is not deployed.
 
 On the TF-IDF model, unfamiliar chats are 3.2% of the test set and 8.2% of the shifted eval. Labels can be right while the chat is still unlike the training slice.
 
@@ -171,23 +185,51 @@ uv sync --group embed
 uv run python scripts/train.py --kind tfidf --compare
 ```
 
-Thresholds in `scamshield/config.py` stayed at the defaults (`SCAM_THRESHOLD` 0.50, uncertain band 0.35–0.65, drift window 40). They were not tuned on a development batch, and they were not moved after these shifted numbers.
+Thresholds in `scamshield/config.py` stayed at the defaults (`SCAM_THRESHOLD` 0.50, uncertain band 0.35–0.65, drift window 40, confidence drop 0.10, unfamiliar-rate rise 0.20, uncertain-rate rise 0.15). They were not moved after the shifted numbers. Mean unfamiliarity was added after the shifted stream was inspected, so that stream is development data. The number stored as `novelty_mean_alert` is a one-sided Student-t prediction limit for the mean of a future 40-chat window: validation mean plus `t_{n-1, 0.99} * sd * sqrt(1/40 + 1/n)`. It is not a confidence interval for the validation mean, and the 0.01 tail probability is only the nominal rate under an i.i.d. normal model. It is not a measured false-alarm rate.
 
 ## Monitoring and drift response
 
 Every `/analyze` and replay is logged in SQLite (`logs/predictions.db`): score, chosen-side score `max(score, 1 − score)`, unfamiliarity, and whether the row was sent to review. Chat text is stored only for rows that enter the queue.
 
-Drift uses the last 40 predictions from the current model version only, compared with that model's validation reference:
+Drift uses the last 40 predictions from the current pipeline version only, compared with that version's validation reference. Policy `three-signal-alert-v1` is frozen:
 
-- mean chosen-side score drops by more than 0.10, or
-- unfamiliar rate rises by more than 20 points, or
-- uncertain rate (score between 0.35 and 0.65) rises by more than 15 points.
+- **Drift alert:** mean chosen-side score drops by more than 0.10, or unfamiliar rate rises by more than 20 points, or uncertain rate (score between 0.35 and 0.65) rises by more than 15 points.
+- **Advisory:** mean unfamiliarity rises above the window prediction limit stored on the model (`novelty_mean_alert`). The screen says “Input patterns differ from the reference—monitor closely.” That note does not raise the drift alert and does not send a chat to review by itself.
+- **Individual review:** an uncertain score, an unfamiliar chat, or a high-risk link still queues that chat on its own.
 
-The window needs at least 15 predictions. The UI then shows an alert banner.
+The window needs at least 15 predictions.
 
-Response today: the banner, and uncertain or unfamiliar live chats and shifted-stream replays go to the review queue. While a drift alert is active, chats at or above `DRIFT_FALLBACK_THRESHOLD` (0.20) also go to review.
+The fitted classifier is `tfidf-20261017T080050`. The scoring rules and this policy are pipeline `tfidf-20261017T080050+pipeline-20261017T080050`. Rows logged under the previous pipeline stay in `logs/predictions.db` and are left out of the new window. The working log was not rewritten for this fit.
 
-The shifted-stream button was replayed on `tfidf-20261017T054258` after the log was cleared. It sends 80 of the 97 stream chats. The last 40 did not raise a drift alert: mean chosen-side score 0.86 against a reference of 0.86, unfamiliar rate 2% against 5%, and uncertain rate 0% against 3%. Six of those 80 chats went to the review queue (five unfamiliar, one uncertain). Scoring the remaining 17 the same way still did not raise an alert. The thresholds were not changed after this replay.
+Response today: the alert banner, and uncertain or unfamiliar live chats and shifted-stream replays go to the review queue. While a drift alert is active, chats at or above `DRIFT_FALLBACK_THRESHOLD` (0.20) also go to review. The advisory does not do that.
+
+The shifted stream is development data for the choice of mean unfamiliarity. On that stream the old normal approximation (limit 0.736) was crossed by 0.738. That gap is too small to treat as confirmation. The frozen Student-t limit, computed from the 137 validation scores only, is 0.739.
+
+A first pair of short repetitive chats (`data/confirm/legit.jsonl` and `shifted.jsonl`) both crossed the limit. That pair is not the length of the training chats, so it mixes format with tactic. The limit was not moved.
+
+A second pair keeps the limit frozen and matches the training shape: 40 chats each, 8 messages each, 20 English and 20 Singlish, median length 163 words for the legitimate control and 168 for the shifted tactics (training medians are 143 and 148). They were scored once into temporary databases. The working log was not used.
+
+| Batch | Mean unfamiliarity | Unfamiliar rate | Chosen-side score | Alert |
+|---|---|---|---|---|
+| Matched legitimate control | 0.775 | 25% | 0.79 | yes, mean unfamiliarity only |
+| Matched shifted tactics | 0.821 | 90% | 0.58 | yes, all four signals |
+
+Both sit above 0.739. The shifted batch is farther out, and its confidence drop and uncertain rate would alert even without the mean-unfamiliarity rule. The matched legitimate control would not. Mean unfamiliarity alone still flags that control. That pair is development evidence for moving mean unfamiliarity to an advisory. The cuts were not moved. Details are in `reports/confirm_drift_matched.json`.
+
+The revised policy was then frozen as `three-signal-alert-v1` and scored once on a new pair written before that score (`reports/policy_scenarios.json`). Same shape: 40 chats, 8 messages, 20 English and 20 Singlish. Word spans were 154–176 for onboarding chats and 158–168 for the new tactics (courier bond, training-seat fee, biometric card, night-shift kit, referral-wallet load). The working log was not used. The limit stayed 0.739.
+
+| Batch | Mean unfamiliarity | Unfamiliar rate | Uncertain rate | Chosen-side score | Drift alert | Advisory |
+|---|---|---|---|---|---|---|
+| Onboarding control | 0.836 | 100% | 50% | 0.67 | yes, all three signals | yes |
+| New tactics | 0.829 | 100% | 50% | 0.64 | yes, all three signals | yes |
+
+The pre-written hope was that ordinary onboarding would stay quiet on the three signals. It did not. Both batches alert, and the onboarding chats are slightly more unfamiliar than the new tactics. On that earlier pipeline, accuracy on the onboarding batch was 1.0 and accuracy on the new tactics was 0.525. The chats were not edited after that score. Details are in `reports/confirm_drift_policy.json`. The later fit, above, is a different pipeline. It does not move these cuts.
+
+A later API check on this same frozen policy (`reports/verify_drift_policy.json`) shows the rules do what they say: mean unfamiliarity alone stays an advisory, each of the three original signals can raise the alert by itself, and uncertain, unfamiliar, and high-risk-link chats still reach review during an advisory. That check does not show the alert can stay quiet on ordinary chats of this shape. Both the onboarding batch and the tactic batch still raise it. These results do not justify moving the cuts.
+
+The Monitoring button **Replay unfamiliar writing** posts the `drift` sample. That sample is out-of-domain text, including biology writing, and it is not a set of job scams. A drift alert from that button shows that unfamiliar writing can trip the window. It is not evidence that the service detects evolving recruitment scams. The shifted-set replay is the job-chat control. The test replay stays out of review and out of retraining.
+
+`scripts/review_data.py` last reported 0 errors and 127 warnings on the raw files. The warnings are possible wrong labels, unrealistic chats, and shifted pretexts that also appear in train or test. They still need a person to read them. The scan does not clear those rows.
 
 The test replay is a monitoring control. Those rows are logged and are not queued, and they cannot be labelled into a later retrain. Retrain (`POST /retrain`) is optional. It keeps the previous file as `artifacts/model_prev.joblib`. It has not been run on the finished data.
 

@@ -2,7 +2,8 @@
 
 Public contract (do not change)::
 
-    check_urls(text: str, claimed_company: str | None = None) -> list[dict]
+    check_urls(text: str, claimed_company: str | None = None, *,
+               expected_domain: str | None = None) -> list[dict]
     # [{"url": str, "host": str, "risk": "low"|"medium"|"high",
     #   "flags": [{"code": str, "reason": str}]}]
 
@@ -22,11 +23,12 @@ Surrounding punctuation ``( ) [ ] < > " ' , . ; : ! ?`` is stripped (a
 closing ``)`` is kept when it balances an ``(`` inside the URL). E-mail
 addresses (``hr@abc.example``), version numbers (``1.2.3``), ``e.g.`` and
 sentence fragments such as ``end.Next`` are not URLs. ``http://`` with no
-valid host is ignored. Explicit URLs glued together with ``,`` or ``;``
+valid host is ignored. Explicit URLs glued together with ``,``, ``;``, or ``|``
 (``https://a.example,https://b.example``) are split into separate
 links; if a candidate is invalid, any later ``http(s)://`` inside it is
 still examined. Commas and semicolons inside a path or query are kept, and
-``?next=https://...`` stays part of its link.
+``?next=https://...`` stays part of its link. A ``|`` splits only when the
+next piece is itself an ``http(s)://`` link.
 
 Results are in first-appearance order and de-duplicated on a normalised
 key (scheme ignored; userinfo, host and port lowercased; trailing
@@ -119,6 +121,11 @@ link, company or offer is fraudulent.
   ``.apk`` file (case-insensitive; fragment ignored). Path and query are
   checked raw and after one percent-decoding pass (depth 1), so
   ``task%2Eapk`` and ``task.%61pk`` match; double encoding does not.
+* ``ADVISER_DOMAIN_MISMATCH``: the caller passed ``expected_domain``, a
+  website name supplied separately from the chat. The host is not that
+  domain or a subdomain of it. The tool does not copy a domain out of the
+  chat, and it does not treat the supplied name as verified. The reason
+  says the domain was adviser-provided.
 * ``CLAIMED_COMPANY_MISMATCH``: ``claimed_company`` maps (case-insensitive,
   whitespace-normalised name) to an official domain and the host is neither
   that domain nor a genuine subdomain. Skipped if the company is unknown or
@@ -138,7 +145,10 @@ link, company or offer is fraudulent.
   e.g. ``lankatalentpartners``; tokens < 5 chars ignored) appears
   (a) inside a subdomain label (``abcholdings.careers-portal.example``),
   (b) as a hyphen-separated token of a different registrable label
-  (``abcholdings-careers.example``), or (c) as the whole registrable label
+  (``abcholdings-careers.example``), (c) as consecutive hyphen parts joined
+  together (``abc-holdings`` inside ``abc-holdings-careers.example``),
+  (d) glued to extra letters on one side of that label
+  (``notabcholdings.example``), or (e) as the whole registrable label
   under a different suffix (``abcholdings.com.lk``), while the host is not
   that company's official domain/subdomain. LOOKALIKE and
   BRAND_IN_SUBDOMAIN are independent: both fire if both conditions hold.
@@ -174,10 +184,12 @@ not match ``bit.ly``.
 
 Risk rule
 ---------
-No flags is "low", which is not "safe". A strong flag is "high" on its
-own: ``IP_HOST``, ``CLAIMED_COMPANY_MISMATCH``, ``LOOKALIKE``, or
-``APK_DOWNLOAD``. Any number of the other flags stays "medium", including
-a shortener together with a chat redirect.
+No flags is "low", which is not "safe" and is not a verdict that the
+site is legitimate. Callers should say that website legitimacy has not
+been verified. A strong flag is "high" on its own: ``IP_HOST``,
+``ADVISER_DOMAIN_MISMATCH``, ``CLAIMED_COMPANY_MISMATCH``, ``LOOKALIKE``,
+or ``APK_DOWNLOAD``. Any number of the other flags stays "medium",
+including a shortener together with a chat redirect.
 
 Limitations
 -----------
@@ -185,15 +197,14 @@ Limitations
   following, so a brand-new or compromised site may score "low".
 * The public-suffix handling is a small built-in list, not the full PSL.
 * Bare domains need a TLD from ``KNOWN_TLDS`` (or a ``www.`` prefix).
-* Brand detection inside a registrable label only matches whole hyphen
-  tokens (``notabcholdings.example`` is caught only by
-  ``CLAIMED_COMPANY_MISMATCH`` when a company is claimed).
+* A brand glued into a label is detected only as a prefix or a suffix
+  (``notabcholdings``), not as letters buried in the middle of a word, and
+  only when the extra letters are at most 12 characters.
 * Browser-style parsing covers backslashes, numeric IPv4 and percent-encoded
   hosts for ``http``/``https`` only; other schemes are not extracted.
   Hosts and paths are percent-decoded only once (deeper encodings are not
-  unwrapped). Glued URLs are split only at ``,`` and ``;`` (with ``|`` only
-  the second link is recovered).
-* ``abc-holdings-careers.example`` (brand split by hyphens) is not detected.
+  unwrapped). Glued URLs are split at ``,``, ``;``, and ``|`` when the next
+  piece starts with ``http(s)://``.
 * Chat-link rules follow the documented WhatsApp/Telegram patterns listed
   under ``CHAT_REDIRECT``; new or undocumented patterns are not flagged.
 * The synthetic evaluation set in ``tests/test_links.py`` (``--eval``) checks
@@ -212,8 +223,12 @@ import unicodedata
 from urllib.parse import unquote, unquote_to_bytes
 from pathlib import Path
 
-__all__ = ["check_urls", "official_domains_available", "reload_official_domains",
-           "OFFICIAL_DOMAINS_PATH", "FLAG_CODES"]
+__all__ = ["check_urls", "canonical_expected_domain", "official_domains_available",
+           "reload_official_domains", "OFFICIAL_DOMAINS_PATH", "FLAG_CODES",
+           "UNVERIFIED_NOTICE"]
+
+#: Shown when a link has no structural flag. "low" is the API value.
+UNVERIFIED_NOTICE = "No structural warning found. Website legitimacy has not been verified."
 
 #: Company -> official domain mapping. Missing/invalid file => company checks
 #: (CLAIMED_COMPANY_MISMATCH, LOOKALIKE, BRAND_IN_SUBDOMAIN) are skipped.
@@ -276,7 +291,7 @@ FREE_HOSTING_DOMAINS = (
 
 _APK_RE = re.compile(r"\.apk(?![a-z0-9])", re.IGNORECASE)
 
-_STRIP_TRAILING = set("()[]<>\"',.;:!?")
+_STRIP_TRAILING = set("()[]<>\"',.;:!?|")
 
 _URL_RE = re.compile(
     r"""
@@ -596,7 +611,7 @@ def _accept_bare(parsed: dict, display: str) -> bool:
 # A new explicit URL starts right after one of these separators even when
 # there is no space ("a.example,https://b.example"). "=" is deliberately not
 # a separator, so "?next=https://portal.example" stays one link.
-_SCHEME_SPLIT_RE = re.compile(r"(?<=[,;])https?://", re.IGNORECASE)
+_SCHEME_SPLIT_RE = re.compile(r"(?<=[,;|])https?://", re.IGNORECASE)
 _SCHEME_ANYWHERE_RE = re.compile(r"https?://", re.IGNORECASE)
 
 
@@ -946,6 +961,46 @@ def _levenshtein(a: str, b: str, limit: int | None = None) -> int:
     return prev[-1]
 
 
+def canonical_expected_domain(raw: str | None) -> str | None:
+    """Return the host an adviser typed, or None if the field is blank.
+
+    A URL is reduced to its host. This never reads the chat. An unusable
+    name raises ``ValueError`` so a caller can reject it instead of
+    treating it as verified.
+    """
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    text = text.split()[0]
+    if "://" in text:
+        text = text.split("://", 1)[1]
+    text = text.split("/")[0].split("?")[0].split("#")[0]
+    text = text.rsplit("@", 1)[-1]
+    host = _canonical_config_domain(text)
+    if host and host.startswith("www."):
+        parent = _canonical_config_domain(host[4:])
+        if parent:
+            host = parent
+    if not host:
+        raise ValueError("Expected employer domain is not a usable website name.")
+    return host
+
+
+def _check_adviser_domain(p: dict, ctx: dict) -> str | None:
+    domain = ctx.get("expected_domain")
+    if not domain or _on_domain(p["host"], domain):
+        return None
+    what = "IP address" if _is_ip(p["host"]) else "website"
+    return (f"Adviser-provided domain: {domain} was typed separately from this "
+            f"chat. This tool did not look it up or verify it. This link's "
+            f"destination is the {what} {p['host']}, which is not that domain "
+            "or one of its subdomains. Companies sometimes use outside "
+            "recruiting platforms or forms, so this is a reason to check "
+            "the page, not a conclusion about it.")
+
+
 def _check_claimed_company(p: dict, ctx: dict) -> str | None:
     claimed = ctx.get("claimed_company")
     if not claimed or not claimed.strip():
@@ -989,20 +1044,47 @@ def _check_lookalike(p: dict, ctx: dict) -> str | None:
     return None
 
 
+def _joined_hyphen_parts(label: str) -> set[str]:
+    """Consecutive hyphen parts stuck together, so abc + holdings = abcholdings."""
+    parts = [_squash(part) for part in label.split("-") if part]
+    found: set[str] = set()
+    for start in range(len(parts)):
+        acc = ""
+        for part in parts[start:]:
+            acc += part
+            if len(acc) >= BRAND_MIN_LEN:
+                found.add(acc)
+    return found
+
+
+def _glued_brand(label: str, token: str) -> bool:
+    """True when the brand is a prefix or suffix of one label, with a short affix.
+
+    ``notabcholdings`` ends with ``abcholdings``. A brand buried in the middle
+    of an unrelated word is left alone.
+    """
+    whole = _squash(label)
+    if len(token) < BRAND_MIN_LEN or token == whole:
+        return False
+    if whole.startswith(token) or whole.endswith(token):
+        return 0 < len(whole) - len(token) <= 12
+    return False
+
+
 def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
     host = p["host"]
     if _is_ip(host):
         return None
     sub, label, _suffix = _split_registrable(p["host_unicode"])
     sub_squashed = [_squash(s) for s in sub]
-    label_tokens = label.split("-")
+    label_tokens = set(label.split("-")) | _joined_hyphen_parts(label)
     _s, owner_label, owner_suffix = _split_registrable(host)
     hits = []
     for domain, _label, tokens in _official_index():
         if _on_domain(host, domain):
             continue
         for tok in tokens:
-            if any(tok in s for s in sub_squashed) or tok in label_tokens:
+            if any(tok in s for s in sub_squashed) or tok in label_tokens or _glued_brand(label, tok):
                 hits.append(f"'{tok}' ({domain})")
                 break
     if hits:
@@ -1076,6 +1158,7 @@ _CHECKS = (
     ("SHORTENER", _check_shortener),
     ("CHAT_REDIRECT", _check_chat_redirect),
     ("APK_DOWNLOAD", _check_apk_download),
+    ("ADVISER_DOMAIN_MISMATCH", _check_adviser_domain),
     ("CLAIMED_COMPANY_MISMATCH", _check_claimed_company),
     ("LOOKALIKE", _check_lookalike),
     ("BRAND_IN_SUBDOMAIN", _check_brand_in_subdomain),
@@ -1089,7 +1172,7 @@ FLAG_CODES = tuple(code for code, _ in _CHECKS)
 
 
 STRONG_FLAGS = frozenset({
-    "IP_HOST", "CLAIMED_COMPANY_MISMATCH", "LOOKALIKE", "APK_DOWNLOAD",
+    "IP_HOST", "ADVISER_DOMAIN_MISMATCH", "CLAIMED_COMPANY_MISMATCH", "LOOKALIKE", "APK_DOWNLOAD",
 })
 
 
@@ -1110,23 +1193,34 @@ def _risk(flags: list) -> str:
     return "medium"
 
 
-def _context(claimed_company: str | None) -> dict:
-    return {"claimed_company": claimed_company if isinstance(claimed_company, str) else None}
+def _context(claimed_company: str | None, expected_domain: str | None) -> dict:
+    domain = None
+    if isinstance(expected_domain, str) and expected_domain.strip():
+        try:
+            domain = canonical_expected_domain(expected_domain)
+        except ValueError:
+            domain = None
+    return {
+        "claimed_company": claimed_company if isinstance(claimed_company, str) else None,
+        "expected_domain": domain,
+    }
 
 
 # --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
 
-def check_urls(text: str, claimed_company: str | None = None) -> list[dict]:
+def check_urls(text: str, claimed_company: str | None = None, *,
+               expected_domain: str | None = None) -> list[dict]:
     """Extract links from ``text`` and attach rule-based warning flags.
 
-    Returns a JSON-serialisable list in first-appearance order. "low" risk
-    means no warning was found, not that the link is safe.
+    ``expected_domain`` is used only when the caller supplies it. It is never
+    copied out of ``text``. "low" risk means no structural warning was found,
+    not that the website is legitimate.
     """
     if not isinstance(text, str) or not text:
         return []
-    ctx = _context(claimed_company)
+    ctx = _context(claimed_company, expected_domain)
     results: list[dict] = []
     for display, parsed in _extract(text):
         flags = []

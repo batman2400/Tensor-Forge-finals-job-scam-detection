@@ -4,6 +4,7 @@ Usage: python scripts/train.py [--kind embed|tfidf] [--compare]
 """
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -36,11 +37,19 @@ def main():
         print(f"   test:    {fmt(report['test'])}")
         print(f"   shifted: {fmt(report['shifted'])}")
         if kind == args.kind:
+            if config.MODEL_PATH.exists():
+                previous = config.MODEL_PATH.with_name("model_prev.joblib")
+                shutil.copy(config.MODEL_PATH, previous)
+                print(f"   previous -> {previous}")
             detector.save()
             print(f"   saved -> {config.MODEL_PATH} ({detector.version})")
 
+    reports["deployed_kind"] = args.kind
     save_report(reports, "metrics")
-    print(json.dumps({k: v["reference"] for k, v in reports.items()}, indent=2))
+    print(json.dumps(
+        {k: v["reference"] for k, v in reports.items() if isinstance(v, dict) and "reference" in v},
+        indent=2,
+    ))
 
 
 if __name__ == "__main__":

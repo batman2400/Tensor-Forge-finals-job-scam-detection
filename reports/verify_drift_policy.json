@@ -1,0 +1,138 @@
+{
+  "pipeline_version": "tfidf-20261017T054258+pipeline-20261017T073134",
+  "drift_policy": "three-signal-alert-v1",
+  "novelty_mean_alert": 0.7391783426184554,
+  "novelty_threshold": 0.791448387013817,
+  "working_log": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\logs\\predictions.db",
+  "working_log_used": false,
+  "thresholds_changed": false,
+  "example_flags": {
+    "plain": {
+      "score": 0.3037514903756669,
+      "novelty": 0.7424772158592585,
+      "unfamiliar": false,
+      "uncertain": false,
+      "high_link": false
+    },
+    "unfamiliar": {
+      "score": 0.23578462687184337,
+      "novelty": 0.7928687173052212,
+      "unfamiliar": true,
+      "uncertain": false,
+      "high_link": false
+    },
+    "uncertain": {
+      "score": 0.40723883541110145,
+      "novelty": 0.6959507425392853,
+      "unfamiliar": false,
+      "uncertain": true,
+      "high_link": false
+    },
+    "high_link": {
+      "score": 0.10073288313645651,
+      "novelty": 0.7664666136227197,
+      "unfamiliar": false,
+      "uncertain": false,
+      "high_link": true
+    }
+  },
+  "advisory_only": {
+    "drift": false,
+    "alerts": [],
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "window_size": 15,
+    "mean_novelty": 0.7653133648161362,
+    "mean_confidence": 0.8600435733035113,
+    "unfamiliar_rate": 0.0,
+    "uncertain_rate": 0.0
+  },
+  "plain_during_advisory": {
+    "score": 0.3037514903756669,
+    "drift_active": false,
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "routed_to_review": false,
+    "review_reason": null,
+    "prediction_id": 16
+  },
+  "uncertain_during_advisory": {
+    "score": 0.40723883541110145,
+    "drift_active": false,
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "routed_to_review": true,
+    "review_reason": "uncertain",
+    "prediction_id": 17
+  },
+  "unfamiliar_during_advisory": {
+    "score": 0.23578462687184337,
+    "drift_active": false,
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "routed_to_review": true,
+    "review_reason": "unfamiliar",
+    "prediction_id": 18
+  },
+  "high_link_during_advisory": {
+    "score": 0.10073288313645651,
+    "drift_active": false,
+    "advisory": [
+      "Input patterns differ from the reference\u2014monitor closely"
+    ],
+    "routed_to_review": true,
+    "review_reason": "high-risk-link",
+    "prediction_id": 19
+  },
+  "signals": {
+    "confidence_drop": {
+      "drift": true,
+      "alerts": [
+        "Mean confidence fell from 0.86 to 0.74"
+      ],
+      "advisory": [],
+      "window_size": 15,
+      "mean_novelty": 0.6891783426184553,
+      "mean_confidence": 0.7400435733035113,
+      "unfamiliar_rate": 0.0,
+      "uncertain_rate": 0.0
+    },
+    "unfamiliar_rise": {
+      "drift": true,
+      "alerts": [
+        "Unfamiliar inputs rose from 5% to 33%"
+      ],
+      "advisory": [],
+      "window_size": 15,
+      "mean_novelty": 0.7249350240835759,
+      "mean_confidence": 0.8600435733035113,
+      "unfamiliar_rate": 0.3333333333333333,
+      "uncertain_rate": 0.0
+    },
+    "uncertain_rise": {
+      "drift": true,
+      "alerts": [
+        "Uncertain predictions rose from 1% to 27%"
+      ],
+      "advisory": [],
+      "window_size": 15,
+      "mean_novelty": 0.6891783426184553,
+      "mean_confidence": 0.8600435733035113,
+      "unfamiliar_rate": 0.0,
+      "uncertain_rate": 0.26666666666666666
+    }
+  },
+  "plain_during_confidence_alert": {
+    "score": 0.3037514903756669,
+    "drift_active": true,
+    "advisory": [],
+    "routed_to_review": true,
+    "review_reason": "drift-fallback",
+    "prediction_id": 16
+  },
+  "failures": []
+}

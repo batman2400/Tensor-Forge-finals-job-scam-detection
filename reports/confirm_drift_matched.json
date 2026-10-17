@@ -1,0 +1,42 @@
+{
+  "pipeline_version": "tfidf-20261017T054258+pipeline-20261017T071732",
+  "fit_version": "tfidf-20261017T054258",
+  "novelty_mean_alert": 0.7391783426184554,
+  "mean_novelty_validation": 0.718414050843763,
+  "novelty_limit": "one-sided Student-t prediction limit for the mean of a future window of 40",
+  "novelty_assumptions": "i.i.d. normal validation scores; the future window is the same size and the same distribution; nominal tail probability only. Not a measured false-alarm rate. Mean unfamiliarity was chosen after the shifted stream was inspected, so that stream is development data.",
+  "working_log": "C:\\Users\\mohan\\OneDrive\\Desktop\\Work\\Tensor forge finals\\scamshield\\logs\\predictions.db",
+  "development_stream_replayed": false,
+  "threshold_changed": false,
+  "legit_control": {
+    "source": "confirm:legit",
+    "n": 40,
+    "accuracy": 1.0,
+    "drift": true,
+    "alerts": [
+      "Mean unfamiliarity 0.775 is above the window prediction limit 0.739"
+    ],
+    "mean_novelty": 0.7746708351953449,
+    "mean_confidence": 0.7945125872838622,
+    "unfamiliar_rate": 0.25,
+    "uncertain_rate": 0.0,
+    "temporary_db": "C:\\Users\\mohan\\AppData\\Local\\Temp\\tmpxoq6ibcf\\confirm.db"
+  },
+  "shifted_confirm": {
+    "source": "confirm:shifted",
+    "n": 40,
+    "accuracy": 0.775,
+    "drift": true,
+    "alerts": [
+      "Mean confidence fell from 0.86 to 0.58",
+      "Unfamiliar inputs rose from 5% to 90%",
+      "Uncertain predictions rose from 1% to 80%",
+      "Mean unfamiliarity 0.821 is above the window prediction limit 0.739"
+    ],
+    "mean_novelty": 0.8209732645389012,
+    "mean_confidence": 0.584466026328808,
+    "unfamiliar_rate": 0.9,
+    "uncertain_rate": 0.8,
+    "temporary_db": "C:\\Users\\mohan\\AppData\\Local\\Temp\\tmpziuvmits\\confirm.db"
+  }
+}
