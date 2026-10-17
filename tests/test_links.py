@@ -475,3 +475,43 @@ def test_numeric_edges_and_company_names_unchanged():
 def test_bare_text_only_accepts_dotted_quads():
     assert check_urls("See section 1.2/3 and 127.1/x and v1.2.3") == []
     assert one("open 198.51.100.7/login")["host"] == "198.51.100.7"
+
+
+def test_percent_encoded_host_is_decoded_for_checks():
+    r = one("https://%65vil.example/login", "ABC Holdings")
+    assert r["url"] == "https://%65vil.example/login"
+    assert r["host"] == "evil.example"
+    assert "CLAIMED_COMPANY_MISMATCH" in codes(r)
+    assert r["risk"] == "high"
+
+
+def test_percent_encoded_official_host_is_not_a_mismatch():
+    r = one("https://%61%62%63holdings.EXAMPLE/careers", "ABC Holdings")
+    assert r["host"] == "abcholdings.example"
+    assert codes(r) == [] and r["risk"] == "low"
+    r = one("https://careers.abcholding%73.example/", "ABC Holdings")
+    assert r["host"] == "careers.abcholdings.example" and codes(r) == []
+
+
+def test_percent_encoded_ip_host_gets_ip_flag():
+    r = one("http://%31%32%37.0.0.1/pay")
+    assert r["host"] == "127.0.0.1"
+    assert "IP_HOST" in codes(r) and r["risk"] == "high"
+    assert one("http://%32%31%33%30%37%30%36%34%33%33/x")["host"] == "127.0.0.1"
+
+
+@pytest.mark.parametrize("url", ["https://%zzabcholdings.example/", "https://abcholdings%2.example/",
+                                 "https://abcholdings%.example/", "https://%ff%fe.example/",
+                                 "https://evil.example%40abcholdings.example/",
+                                 "https://evil.example%2fabcholdings.example/",
+                                 "https://abcholdings.example%3a80/",
+                                 "https://%2561bcholdings.example/"])
+def test_malformed_or_structure_changing_encodings_are_dropped(url):
+    res = check_urls(url, "ABC Holdings")
+    assert res == []  # never reported, so never "verified" as the company
+
+
+def test_percent_encoded_unicode_host_still_punycode():
+    r = one("https://%D0%B0bcholdings.example/login")  # Cyrillic a
+    assert r["host"] == "\u0430bcholdings.example"
+    assert codes(r) == ["LOOKALIKE", "PUNYCODE"]

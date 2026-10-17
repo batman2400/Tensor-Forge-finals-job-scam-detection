@@ -44,6 +44,13 @@ locally without any lookup:
   link is dropped), never wrapped. A host whose last label is numeric but
   is not a valid address is rejected. Bare links (no scheme) only accept
   conventional dotted-quad IPv4 such as ``198.51.100.7/login``.
+* Percent-encoded hosts are decoded exactly once, strictly (valid ``%XX``
+  escapes and UTF-8 only), before validation: ``https://%65vil.example``
+  is ``evil.example`` and ``http://%31%32%37.0.0.1`` is ``127.0.0.1``. A
+  malformed escape, invalid UTF-8, or a decoded character that is not
+  allowed in a host (``@ / : % ? #`` ...) drops the link. Decoded non-ASCII
+  characters still trigger ``PUNYCODE``. Path and query are decoded
+  separately (see ``APK_DOWNLOAD``).
 
 Flags (stable order = order of checks below)
 --------------------------------------------
@@ -114,6 +121,7 @@ import functools
 import ipaddress
 import json
 import re
+from urllib.parse import unquote_to_bytes
 from pathlib import Path
 
 __all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH",
@@ -218,6 +226,10 @@ _IPV4_PART_DEC = re.compile(r"[0-9]+")
 _DOTTED_QUAD = re.compile(r"(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}")
 
 
+_BAD_PERCENT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_FORBIDDEN_HOST_CHARS = frozenset("\x00\t\n\r #%/:<>?@[\\]^|")
+
+
 def _ends_in_number(host: str) -> bool:
     last = host.rsplit(".", 1)[-1]
     return bool(_IPV4_PART_DEC.fullmatch(last) or _IPV4_PART_HEX.fullmatch(last))
@@ -257,6 +269,19 @@ def _normalize_host(raw: str, bracketed: bool, strict_ipv4: bool) -> str | None:
         try:
             return str(ipaddress.IPv6Address(raw)) if "%" not in raw else None
         except ValueError:
+            return None
+    if "%" in raw:
+        # Decode exactly once, strictly: every % must start a valid %XX
+        # escape and the bytes must be valid UTF-8. The decoded host is then
+        # validated like any other, so an encoded '@', '/', ':', '%', ...
+        # cannot change the authority structure (it makes the host invalid).
+        if _BAD_PERCENT_RE.search(raw):
+            return None
+        try:
+            raw = unquote_to_bytes(raw).decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+        if any(ch in _FORBIDDEN_HOST_CHARS for ch in raw):
             return None
     host = raw.lower().rstrip(".")
     if not host:
