@@ -37,6 +37,13 @@ locally without any lookup:
   at the first ``/``, ``\\``, ``?`` or ``#``, and backslashes in the path
   become ``/``. So ``https://evil.example\\@abcholdings.example/login``
   goes to ``evil.example`` (the ``@`` is in the path, no ``AT_SYMBOL``).
+* Numeric IPv4 hosts in ``http(s)://`` links are decoded like a browser
+  and shown as dotted quads: ``2130706433``, ``0x7f000001``, ``0177.0.0.1``
+  and ``127.1`` all become ``127.0.0.1``. Each of 1-4 parts may be decimal,
+  ``0x`` hex or leading-zero octal; out-of-range values are rejected (the
+  link is dropped), never wrapped. A host whose last label is numeric but
+  is not a valid address is rejected. Bare links (no scheme) only accept
+  conventional dotted-quad IPv4 such as ``198.51.100.7/login``.
 
 Flags (stable order = order of checks below)
 --------------------------------------------
@@ -205,6 +212,64 @@ def _valid_hostname(host: str) -> bool:
     return all(_LABEL_RE.match(label) for label in host.split("."))
 
 
+_IPV4_PART_HEX = re.compile(r"0[xX][0-9a-fA-F]*")
+_IPV4_PART_OCT = re.compile(r"0[0-7]+")
+_IPV4_PART_DEC = re.compile(r"[0-9]+")
+_DOTTED_QUAD = re.compile(r"(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}")
+
+
+def _ends_in_number(host: str) -> bool:
+    last = host.rsplit(".", 1)[-1]
+    return bool(_IPV4_PART_DEC.fullmatch(last) or _IPV4_PART_HEX.fullmatch(last))
+
+
+def _parse_ipv4(host: str) -> str | None:
+    """WHATWG IPv4 parser: 1-4 parts, each decimal, 0x-hex or 0-octal.
+
+    All parts but the last must be <= 255; the last fills the remaining
+    bytes (< 256 ** (5 - parts)). Out-of-range values return None (the URL
+    is rejected), never wrapped. No resolver is involved.
+    """
+    parts = host.split(".")
+    if len(parts) > 4:
+        return None
+    nums = []
+    for part in parts:
+        if _IPV4_PART_HEX.fullmatch(part):
+            nums.append(int(part[2:] or "0", 16))
+        elif len(part) > 1 and part.startswith("0"):
+            if not _IPV4_PART_OCT.fullmatch(part):
+                return None
+            nums.append(int(part, 8))
+        elif _IPV4_PART_DEC.fullmatch(part):
+            nums.append(int(part))
+        else:
+            return None
+    if any(n > 255 for n in nums[:-1]) or nums[-1] >= 256 ** (5 - len(nums)):
+        return None
+    value = nums[-1] + sum(n << (8 * (3 - i)) for i, n in enumerate(nums[:-1]))
+    return str(ipaddress.IPv4Address(value))
+
+
+def _normalize_host(raw: str, bracketed: bool, strict_ipv4: bool) -> str | None:
+    """Return the canonical destination host, or None if it is invalid."""
+    if bracketed:
+        try:
+            return str(ipaddress.IPv6Address(raw)) if "%" not in raw else None
+        except ValueError:
+            return None
+    host = raw.lower().rstrip(".")
+    if not host:
+        return None
+    if _ends_in_number(host):
+        if strict_ipv4:
+            # Bare text (no scheme): only conventional dotted quads, so that
+            # section numbers like 1.2/3 are not read as addresses.
+            return host if _DOTTED_QUAD.fullmatch(host) and _is_ip(host) else None
+        return _parse_ipv4(host)
+    return host if _valid_hostname(host) else None
+
+
 _SCHEME_PREFIX_RE = re.compile(r"(https?):", re.IGNORECASE)
 _AUTHORITY_END_RE = re.compile(r"[/\\?#]")
 
@@ -248,10 +313,9 @@ def _parse(display: str, has_scheme: bool) -> dict | None:
         host, sep, port = hostport.rpartition(":")
         if not sep or not (port.isdigit() or port == ""):
             host, port = hostport, ""
-    host = host.lower().rstrip(".")
-    if not host:
-        return None
-    if not (_is_ip(host) or _valid_hostname(host)):
+    host = _normalize_host(host, bracketed=hostport.startswith("["),
+                           strict_ipv4=not has_scheme)
+    if host is None:
         return None
     return {
         "scheme": scheme if has_scheme else "",

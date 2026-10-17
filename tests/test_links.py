@@ -441,3 +441,37 @@ def test_backslash_in_query_is_not_rewritten():
     assert r["host"] == "portal.example"
     p = links._parse(r["url"], True)
     assert (p["path"], p["query"], p["fragment"]) == ("/a/b", r"x=c\d", r"e\f")
+
+
+@pytest.mark.parametrize("url", ["http://2130706433/pay", "http://0x7f000001/pay",
+                                 "http://0177.0.0.1/pay", "http://127.1/pay",
+                                 "http://0x7F.0.0.0x1/pay", "http://127.0.0.1./pay"])
+def test_numeric_ipv4_forms_are_canonicalised(url):
+    r = one(url)
+    assert r["url"] == url
+    assert r["host"] == "127.0.0.1"
+    assert "IP_HOST" in codes(r)
+    assert r["risk"] == "high"
+
+
+@pytest.mark.parametrize("url", ["http://4294967296/pay", "http://256.0.0.1/pay",
+                                 "http://1.2.3.4.5/pay", "http://0x100000000/pay",
+                                 "http://1.2.65536/pay", "http://08.0.0.1/pay",
+                                 "http://abc.0x1/pay", "http://jobs.example.99/pay",
+                                 "http://1..2/pay"])
+def test_out_of_range_numeric_hosts_rejected_not_wrapped(url):
+    assert check_urls(url) == []
+
+
+def test_numeric_edges_and_company_names_unchanged():
+    assert one("http://4294967295/x")["host"] == "255.255.255.255"
+    assert one("http://1.16777215/x")["host"] == "1.255.255.255"
+    r = one("https://abc123.example/x")
+    assert r["host"] == "abc123.example" and codes(r) == []
+    assert one("https://0xdeadbeef.example/x")["host"] == "0xdeadbeef.example"
+    assert one("https://[2001:DB8::1]/x")["host"] == "2001:db8::1"
+
+
+def test_bare_text_only_accepts_dotted_quads():
+    assert check_urls("See section 1.2/3 and 127.1/x and v1.2.3") == []
+    assert one("open 198.51.100.7/login")["host"] == "198.51.100.7"
