@@ -159,7 +159,14 @@ Limitations
 * Browser-style parsing covers backslashes, numeric IPv4 and percent-encoded
   hosts for ``http``/``https`` only; other schemes are not extracted.
   Hosts and paths are percent-decoded only once (deeper encodings are not
-  unwrapped). Glued URLs are split only at ``,`` and ``;``.
+  unwrapped). Glued URLs are split only at ``,`` and ``;`` (with ``|`` only
+  the second link is recovered).
+* ``abc-holdings-careers.example`` (brand split by hyphens) is not detected.
+* Chat-link rules follow the documented WhatsApp/Telegram patterns listed
+  under ``CHAT_REDIRECT``; new or undocumented patterns are not flagged.
+* The synthetic evaluation set in ``tests/test_links.py`` (``--eval``) checks
+  these rules against hand-written expectations; it is not a measure of
+  real-world scam detection.
 """
 
 from __future__ import annotations

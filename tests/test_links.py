@@ -1016,3 +1016,27 @@ def test_precomputed_index_follows_mapping_reload(mapping_path, tmp_path):
     links.reload_official_domains()
     assert "LOOKALIKE" in codes(one("https://abcho1dings.example/"))
     assert "LOOKALIKE" not in codes(one("https://ga1lefort.example/"))
+
+
+# ------------------------------------------ demo cases (Step 7, synthetic) ----
+
+DEMO_CASES = [
+    ("DEMO-1 official subdomain",
+     "Hi Nimal, your ABC Holdings interview is confirmed: "
+     "https://careers.abcholdings.example/interview?slot=0930", ABC,
+     "careers.abcholdings.example", []),
+    ("DEMO-2 brand under another domain",
+     "ABC Holdings HR: finish registration at "
+     "https://abcholdings.careers-portal.example/register to unlock paid tasks", ABC,
+     "abcholdings.careers-portal.example", [MIS, BRAND]),
+    ("DEMO-3 disguised destination",
+     "Withdraw your earnings now: http://abcholdings.example@0xC6336407/payout", ABC,
+     "198.51.100.7", [IP, AT, MIS]),
+]
+
+
+@pytest.mark.parametrize("name,text,company,host,flags", DEMO_CASES, ids=[d[0] for d in DEMO_CASES])
+def test_demo_cases(name, text, company, host, flags):
+    r = one(text, company)
+    assert r["host"] == host and codes(r) == flags
+    assert r["risk"] == _derived_risk(flags)
