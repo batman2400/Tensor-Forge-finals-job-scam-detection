@@ -21,6 +21,7 @@ import collections
 import csv
 import hashlib
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -58,8 +59,55 @@ def _bucket(reason: str) -> str:
     return "other"
 
 
-def audit_and_prepare(rows):
-    """rows: iterable of {"url", "label" (internal 0/1), optional "src_row"}."""
+def load_psl(path):
+    """Parse a Public Suffix List file (offline). Returns (rules, wildcards, exceptions)."""
+    rules, wild, exc = set(), set(), set()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("//"):
+                continue
+            rule = line.split()[0]
+            kind = None
+            if rule.startswith("!"):
+                kind, rule = "exc", rule[1:]
+            elif rule.startswith("*."):
+                kind, rule = "wild", rule[2:]
+            try:
+                rule = rule.encode("idna").decode("ascii").lower()
+            except UnicodeError:
+                rule = rule.lower()
+            {"exc": exc, "wild": wild}.get(kind, rules).add(rule)
+    return rules, wild, exc
+
+
+def psl_registrable(host, psl):
+    """Registrable domain (eTLD+1) per PSL algorithm; IPs and bare suffixes return host."""
+    rules, wild, exc = psl
+    host = host.rstrip(".").lower()
+    if host.startswith("[") or re.match(r"^[0-9]+(\.[0-9]+){3}$", host):
+        return host
+    labels = host.split(".")
+    suffix_len = 1  # default rule "*"
+    for i in range(len(labels)):
+        cand = ".".join(labels[i:])
+        if cand in exc:
+            suffix_len = len(labels) - i - 1
+            break
+        if cand in rules:
+            suffix_len = max(suffix_len, len(labels) - i)
+        if i + 1 < len(labels) and ".".join(labels[i + 1:]) in wild:
+            suffix_len = max(suffix_len, len(labels) - i)
+    if suffix_len >= len(labels):
+        return host
+    return ".".join(labels[-(suffix_len + 1):])
+
+
+def audit_and_prepare(rows, group_fn=None):
+    """rows: iterable of {"url", "label" (internal 0/1), optional "src_row"}.
+
+    group_fn(host) overrides the built-in grouping key (e.g. full PSL).
+    """
     stats = collections.Counter()
     by_text: dict = {}
     order = []
@@ -75,7 +123,7 @@ def audit_and_prepare(rows):
             by_text[t]["count"] += 1
             stats["duplicates_dropped"] += 1
             continue
-        by_text[t] = {"text": t, "group": p["group"], "label": r["label"],
+        by_text[t] = {"text": t, "group": group_fn(p["host"]) if group_fn else p["group"], "label": r["label"],
                       "labels": {r["label"]}, "count": 1, "src_row": r.get("src_row", i)}
         order.append(t)
     out = []
@@ -157,11 +205,20 @@ def main(argv=None):
     ap.add_argument("--test-frac", type=float, default=0.1)
     ap.add_argument("--source-sha256", default="")
     ap.add_argument("--retrieved-at", default="")
+    ap.add_argument("--psl", default="", help="offline public_suffix_list.dat path; "
+                    "omit to use the small built-in suffix list")
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
     rows, read_stats = read_uci_csv(a.csv)
     raw_counts = collections.Counter(r["label"] for r in rows)
-    prepared, stats = audit_and_prepare(rows)
+    group_fn = None
+    psl_info = None
+    if a.psl:
+        psl = load_psl(a.psl)
+        group_fn = lambda h: psl_registrable(h, psl)  # noqa: E731
+        psl_info = {"path": Path(a.psl).name, "sha256": hashlib.sha256(Path(a.psl).read_bytes()).hexdigest(),
+                    "rules": len(psl[0]), "wildcards": len(psl[1]), "exceptions": len(psl[2])}
+    prepared, stats = audit_and_prepare(rows, group_fn)
     parts = split_groups(prepared, seed=a.seed, val_frac=a.val_frac, test_frac=a.test_frac)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -182,7 +239,9 @@ def main(argv=None):
         "preprocessing_version": PREPROCESSING_VERSION,
         "rules_commit": RULES_BASELINE_COMMIT,
         "seed": a.seed, "val_frac": a.val_frac, "test_frac": a.test_frac,
-        "split": "domain-grouped by offline registrable-domain approximation (sha256(seed, group))",
+        "split": ("domain-grouped by full Public Suffix List registrable domain" if psl_info else
+                  "domain-grouped by offline built-in registrable-domain approximation") + " (sha256(seed, group))",
+        "psl": psl_info,
         "read_stats": read_stats,
         "raw_label_counts": {"phishing": raw_counts[1], "legitimate": raw_counts[0]},
         "audit": stats,

@@ -260,3 +260,18 @@ def test_adapter_end_to_end(trained):
     out = analyze_links(text, "ABC Holdings", enable_url_ml=True, model_dir=d)
     assert out["links"] == check_urls(text, "ABC Holdings")
     assert [m["status"] for m in out["url_ml"]] == ["scored", "not_evaluated"]
+
+
+def test_psl_registrable_offline(tmp_path):
+    p = tmp_path / "psl.dat"
+    p.write_text("// comment\ncom\nuk\nco.uk\n*.ck\n!www.ck\nblogspot.com\n", encoding="utf-8")
+    psl = prep_script.load_psl(p)
+    r = prep_script.psl_registrable
+    assert r("a.b.shop.co.uk", psl) == "shop.co.uk"
+    assert r("x.myblog.blogspot.com", psl) == "myblog.blogspot.com"
+    assert r("a.b.foo.ck", psl) == "b.foo.ck"
+    assert r("a.www.ck", psl) == "www.ck"
+    assert r("login.shop.com", psl) == "shop.com"
+    assert r("host.unknowntld", psl) == "host.unknowntld"
+    assert r("10.0.0.1", psl) == "10.0.0.1"
+    assert r("co.uk", psl) == "co.uk"
