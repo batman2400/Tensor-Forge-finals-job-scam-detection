@@ -76,10 +76,13 @@ def main(argv=None):
     ap.add_argument("--max-features", type=int, default=2 ** 18)
     ap.add_argument("--C-grid", default="1,4,16")
     ap.add_argument("--precision-target", type=float, default=0.95)
+    ap.add_argument("--no-test", action="store_true",
+                    help="never read or score test.jsonl (validation-only experiment)")
     a = ap.parse_args(argv)
     d = Path(a.data)
     manifest = json.loads((d / "manifest.json").read_text())
-    train_all, val, test = load(d / "train.jsonl"), load(d / "val.jsonl"), load(d / "test.jsonl")
+    train_all, val = load(d / "train.jsonl"), load(d / "val.jsonl")
+    test = [] if a.no_test else load(d / "test.jsonl")
     train = sample_rows(train_all, a.train_rows, seed=a.seed)
     Xtr, ytr = [r["text"] for r in train], np.array([r["label"] for r in train])
     Xva, yva = [r["text"] for r in val], np.array([r["label"] for r in val])
@@ -104,13 +107,14 @@ def main(argv=None):
     thr, objective = choose_threshold(yva, sva, a.precision_target)
     col = list(model.classes_).index(1)
     t0 = time.perf_counter()
-    ste = model.predict_proba(Xte)[:, col]
+    ste = model.predict_proba(Xte)[:, col] if Xte else None
     test_pred_s = time.perf_counter() - t0
     operating_points = []
     for tgt in (0.90, 0.95, 0.99):
         t_, obj_ = choose_threshold(yva, sva, tgt)
         operating_points.append({"precision_target": tgt, "threshold": round(t_, 6), "objective": obj_,
-                                 "validation": metrics(yva, sva, t_), "test": metrics(yte, ste, t_)})
+                                 "validation": metrics(yva, sva, t_),
+                                 "test": metrics(yte, ste, t_) if Xte else "not evaluated (--no-test)"})
     version = f"urlml-lr-char35-{len(train)}-{time.strftime('%Y%m%d%H%M')}"
     report = {
         "model_version": version,
@@ -122,7 +126,7 @@ def main(argv=None):
         "threshold": round(thr, 6), "threshold_objective": objective,
         "operating_points_info_only": operating_points,
         "validation": metrics(yva, sva, thr),
-        "test": metrics(yte, ste, thr),
+        "test": metrics(yte, ste, thr) if Xte else "not evaluated (--no-test)",
         "timing": {"fit_seconds_chosen": round(fit_s, 2), "grid_search_seconds": round(search_s, 2),
                    "test_predict_seconds": round(test_pred_s, 3),
                    "test_predict_ms_per_url": round(1000 * test_pred_s / max(len(Xte), 1), 4)},
@@ -139,7 +143,7 @@ def main(argv=None):
     # end-to-end latency through the public batch API (includes preprocessing)
     url_ml._CACHE.clear()
     t0 = time.perf_counter(); url_ml.load_model(out); load_s = time.perf_counter() - t0
-    sample = [r["text"] for r in test[:1000]]
+    sample = [r["text"] for r in (test or val)[:1000]]
     t0 = time.perf_counter(); res = url_ml.predict_urls(sample, model_dir=out)
     e2e = time.perf_counter() - t0
     report["timing"].update({"load_seconds": round(load_s, 3),
