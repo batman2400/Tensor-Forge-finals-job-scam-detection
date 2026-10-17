@@ -11,12 +11,13 @@ Policy (version ``PREPROCESSING_VERSION``):
   private helpers). The input must be exactly one supported http(s) link; a bare
   ``host/path`` link is parsed as ``http://`` + text. Anything else is
   ``not_evaluated``.
-* Model text = lower-case scheme + ``://`` + canonical ASCII/xn-- ``host`` from
-  ``check_urls`` + optional ``:port``. The path/query/fragment is deliberately
-  NOT used: in PhiUSIIL every legitimate URL is a bare homepage, so path
-  characters would let the model learn "has a path => phishing" (a dataset
-  artefact that would flag ordinary job-posting links). The score therefore
-  reflects the host name only.
+* Model text = canonical ASCII/xn-- ``host`` from ``check_urls`` with leading
+  ``www.`` labels removed, plus optional ``:port``. Scheme, ``www.`` and the
+  path/query/fragment are deliberately NOT used: in PhiUSIIL every legitimate
+  URL is ``https://www.<domain>`` with no path, so those parts would let the
+  model learn dataset artefacts ("http", "no www" or "has a path" =>
+  phishing) that would flag ordinary job-posting links. The score therefore
+  reflects the host name only (see URL_ML_HANDOFF.md limitations).
 * Privacy filter (applied identically to training rows and inference inputs):
   links with userinfo (``@`` in the authority), an e-mail address anywhere, or a
   token-like query parameter name are excluded (``not_evaluated``); the rules
@@ -33,7 +34,7 @@ import re
 
 from scamshield.links import check_urls
 
-PREPROCESSING_VERSION = "urlml-pre-1"
+PREPROCESSING_VERSION = "urlml-pre-2"
 RULES_BASELINE_COMMIT = "f9c7961c442326ef475cbfd56f920bb71d1b9367"
 MAX_MODEL_TEXT_CHARS = 2048
 MAX_INPUT_CHARS = 8192
@@ -157,5 +158,8 @@ def _prepare(url) -> dict:
         p = authority.rsplit(":", 1)[1]
         if p.isdigit():
             port = ":" + str(int(p))
-    text = f"{scheme}://{host}{port}"[:MAX_MODEL_TEXT_CHARS]
+    bare = host
+    while bare.startswith("www.") and bare.count(".") >= 2:
+        bare = bare[4:]
+    text = f"{bare}{port}"[:MAX_MODEL_TEXT_CHARS]
     return _result("ok", url, text=text, host=host, group=registrable_domain(host))

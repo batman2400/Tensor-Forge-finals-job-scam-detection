@@ -48,9 +48,12 @@ def test_preprocessing_deterministic_and_canonical():
     a = prepare_url("https://WWW.Shop-Alpha.com:443/Path?q=1")
     b = prepare_url("https://WWW.Shop-Alpha.com:443/Path?q=1")
     assert a == b and a["status"] == "ok"
-    assert a["text"] == "https://www.shop-alpha.com:443"  # host-only policy
+    assert a["text"] == "shop-alpha.com:443"  # host-only policy, no scheme/www/path
     assert a["group"] == "shop-alpha.com"
-    assert prepare_url("shop-alpha.com/x")["text"] == "http://shop-alpha.com"
+    assert prepare_url("shop-alpha.com/x")["text"] == "shop-alpha.com"
+    assert prepare_url("http://www.shop-alpha.com/")["text"] == "shop-alpha.com"
+    assert prepare_url("https://www.com/")["text"] == "www.com"
+    assert prepare_url("https://jobs.shop-alpha.com/")["text"] == "jobs.shop-alpha.com"
     assert prepare_url("https://shop-alpha.com/a")["text"] == prepare_url("https://SHOP-alpha.com/b?c=1")["text"]
     assert prepare_url("https://exämple.de/p")["host"] == "xn--exmple-cua.de"
 
