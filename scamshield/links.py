@@ -164,8 +164,9 @@ failed load) is cached for the life of the process. Edits or a repaired
 file are picked up only after ``reload_official_domains()`` or a restart.
 For integration, call ``official_domains_available()`` and, if it returns
 False, show something like "Company-domain checks unavailable" so an empty
-flag list is not read as "company verified". ``check_urls()`` output is the
-same shape in both cases.
+flag list is not read as "company verified". ``official_domains()`` returns
+the company names as written in the file, which is what the service matches
+against a pasted chat. ``check_urls()`` output is the same shape either way.
 
 All domain lists match the exact host or a genuine subdomain on a label
 boundary (``host == d or host.endswith("." + d)``), so ``notbit.ly`` does
@@ -210,7 +211,7 @@ import unicodedata
 from urllib.parse import unquote, unquote_to_bytes
 from pathlib import Path
 
-__all__ = ["check_urls", "official_domains_available", "reload_official_domains",
+__all__ = ["check_urls", "official_domains", "official_domains_available", "reload_official_domains",
            "OFFICIAL_DOMAINS_PATH", "FLAG_CODES"]
 
 #: Company -> official domain mapping. Missing/invalid file => company checks
@@ -827,23 +828,35 @@ def _canonical_config_domain(domain: str) -> str | None:
     return mapped
 
 
+_OFFICIAL_BY_NAME: dict[str, str] = {}
+
+
 @functools.lru_cache(maxsize=1)
 def _official_domains() -> tuple:
-    """Return ((normalised_name, squashed_name, domain), ...) or () on error."""
+    """Return ((normalised_name, squashed_name, domain), ...) or () on error.
+
+    Also refreshes ``_OFFICIAL_BY_NAME`` with the names as written in the file.
+    """
+    global _OFFICIAL_BY_NAME
     try:
         with open(OFFICIAL_DOMAINS_PATH, encoding="utf-8") as fh:
             raw = json.load(fh)
     except (OSError, ValueError):
+        _OFFICIAL_BY_NAME = {}
         return ()
     if not isinstance(raw, dict):
+        _OFFICIAL_BY_NAME = {}
         return ()
+    names: dict[str, str] = {}
     out = []
     for name, domain in raw.items():
         if not (isinstance(name, str) and isinstance(domain, str)):
             continue
         domain = _canonical_config_domain(domain)
         if name.strip() and domain:
+            names[name] = domain
             out.append((_norm_company(name), _squash(name), domain))
+    _OFFICIAL_BY_NAME = names
     return tuple(sorted(out, key=lambda t: (t[2], t[0])))
 
 
@@ -862,6 +875,17 @@ def _official_index() -> tuple:
             rows.append((domain, label, tokens))
         _INDEX["rows"], _INDEX["src"] = tuple(rows), entries
     return _INDEX["rows"]
+
+
+def official_domains() -> dict[str, str]:
+    """Return company name to demo domain, using the names as written in the file.
+
+    The service matches these names in a pasted chat. ``check_urls`` still
+    compares a normalised form, so extra whitespace in a caller-supplied
+    name matches the same entry.
+    """
+    _official_domains()
+    return dict(_OFFICIAL_BY_NAME)
 
 
 def official_domains_available() -> bool:
