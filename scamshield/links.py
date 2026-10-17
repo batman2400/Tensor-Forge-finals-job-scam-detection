@@ -38,6 +38,31 @@ Flags (stable order = order of checks below)
 * ``CHAT_REDIRECT``: link opens a Telegram/WhatsApp chat (``CHAT_DOMAINS``).
 * ``APK_DOWNLOAD``: path ends with ``.apk`` or path/query mentions an
   ``.apk`` file (case-insensitive; fragment ignored).
+* ``CLAIMED_COMPANY_MISMATCH``: ``claimed_company`` maps (case-insensitive,
+  whitespace-normalised name) to an official domain and the host is neither
+  that domain nor a genuine subdomain. Skipped if the company is unknown or
+  the mapping is unavailable.
+* ``LOOKALIKE``: the host's registrable label (the label just before the
+  public suffix, e.g. ``abcho1dings`` in ``abcho1dings.example``;
+  ``abc.com.lk`` -> ``abc`` via ``MULTI_PART_SUFFIXES``) is within
+  Levenshtein distance 1..2 of an official domain's label, and the host is
+  not that official domain or its subdomain. Only that label is compared,
+  so sharing the ``.example`` suffix never matches on its own. Labels
+  shorter than ``LOOKALIKE_MIN_LEN`` (5) are ignored.
+* ``BRAND_IN_SUBDOMAIN``: a brand token (official label, e.g.
+  ``abcholdings``, or the company name squashed to lowercase alphanumerics,
+  e.g. ``lankatalentpartners``; tokens < 5 chars ignored) appears
+  (a) inside a subdomain label (``abcholdings.careers-portal.example``),
+  (b) as a hyphen-separated token of a different registrable label
+  (``abcholdings-careers.example``), or (c) as the whole registrable label
+  under a different suffix (``abcholdings.com.lk``), while the host is not
+  that company's official domain/subdomain. LOOKALIKE and
+  BRAND_IN_SUBDOMAIN are independent: both fire if both conditions hold.
+
+The three company checks need ``data/official_domains.json`` (loaded lazily
+from ``OFFICIAL_DOMAINS_PATH`` relative to this file, cached; see
+``official_domains_available()``). If it is missing or invalid, they are
+skipped silently: no flag is raised and nothing is reported as verified.
 
 All domain lists match the exact host or a genuine subdomain on a label
 boundary (``host == d or host.endswith("." + d)``), so ``notbit.ly`` does
@@ -52,11 +77,22 @@ Count distinct flag codes (each check emits at most one flag):
 
 from __future__ import annotations
 
+import functools
 import ipaddress
+import json
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
-__all__ = ["check_urls"]
+__all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH"]
+
+#: Company -> official domain mapping. Missing/invalid file => company checks
+#: (CLAIMED_COMPANY_MISMATCH, LOOKALIKE, BRAND_IN_SUBDOMAIN) are skipped.
+OFFICIAL_DOMAINS_PATH = Path(__file__).resolve().parent.parent / "data" / "official_domains.json"
+
+LOOKALIKE_MIN_LEN = 5
+LOOKALIKE_MAX_DISTANCE = 2
+BRAND_MIN_LEN = 5
 
 # --------------------------------------------------------------------------
 # Constants
@@ -264,6 +300,128 @@ def _check_apk_download(p: dict, ctx: dict) -> str | None:
     return None
 
 
+def _norm_company(name: str) -> str:
+    return " ".join(name.split()).casefold()
+
+
+def _squash(name: str) -> str:
+    return "".join(ch for ch in name.casefold() if ch.isalnum())
+
+
+@functools.lru_cache(maxsize=1)
+def _official_domains() -> tuple:
+    """Return ((normalised_name, squashed_name, domain), ...) or () on error."""
+    try:
+        with open(OFFICIAL_DOMAINS_PATH, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        return ()
+    if not isinstance(raw, dict):
+        return ()
+    out = []
+    for name, domain in raw.items():
+        if not (isinstance(name, str) and isinstance(domain, str)):
+            continue
+        domain = domain.strip().lower().rstrip(".")
+        if name.strip() and _valid_hostname(domain) and "." in domain:
+            out.append((_norm_company(name), _squash(name), domain))
+    return tuple(sorted(out, key=lambda t: (t[2], t[0])))
+
+
+def official_domains_available() -> bool:
+    """True if the official-domain mapping loaded with at least one entry."""
+    return bool(_official_domains())
+
+
+def _split_registrable(host: str) -> tuple[list[str], str, str]:
+    """Return (subdomain_labels, registrable_label, suffix)."""
+    labels = host.split(".")
+    if len(labels) >= 3 and ".".join(labels[-2:]) in MULTI_PART_SUFFIXES:
+        n = 2
+    else:
+        n = 1
+    if len(labels) <= n:
+        return [], labels[0], ".".join(labels[1:])
+    return labels[:-(n + 1)], labels[-(n + 1)], ".".join(labels[-n:])
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _check_claimed_company(p: dict, ctx: dict) -> str | None:
+    claimed = ctx.get("claimed_company")
+    if not claimed or not claimed.strip():
+        return None
+    wanted = _norm_company(claimed)
+    for name, _sq, domain in _official_domains():
+        if name == wanted:
+            if _on_domain(p["host"], domain):
+                return None
+            return (f"The chat claims to be from '{' '.join(claimed.split())}', whose "
+                    f"official domain is {domain}, but this link goes to "
+                    f"{p['host']}, which is a different domain.")
+    return None
+
+
+def _check_lookalike(p: dict, ctx: dict) -> str | None:
+    if _is_ip(p["host"]):
+        return None
+    _sub, label, _suffix = _split_registrable(p["host"])
+    if len(label) < LOOKALIKE_MIN_LEN:
+        return None
+    hits = []
+    for _name, _sq, domain in _official_domains():
+        if _on_domain(p["host"], domain):
+            continue
+        official_label = _split_registrable(domain)[1]
+        if len(official_label) < LOOKALIKE_MIN_LEN:
+            continue
+        dist = _levenshtein(label, official_label)
+        if 1 <= dist <= LOOKALIKE_MAX_DISTANCE:
+            hits.append(domain)
+    if hits:
+        return (f"The name '{label}' differs by only one or two characters "
+                f"from the official domain {', '.join(hits)}; look-alike "
+                "names are often used to imitate a known company.")
+    return None
+
+
+def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
+    host = p["host"]
+    if _is_ip(host):
+        return None
+    sub, label, _suffix = _split_registrable(host)
+    sub_squashed = [_squash(s) for s in sub]
+    label_tokens = label.split("-")
+    hits = []
+    for _name, squashed, domain in _official_domains():
+        if _on_domain(host, domain):
+            continue
+        tokens = {t for t in (_split_registrable(domain)[1], squashed)
+                  if len(t) >= BRAND_MIN_LEN}
+        for tok in sorted(tokens):
+            if any(tok in s for s in sub_squashed) or tok in label_tokens:
+                hits.append(domain)
+                break
+    if hits:
+        return (f"The link uses a company name belonging to {', '.join(hits)} "
+                f"inside a different website ({host}); the real owner of a "
+                "link is the part just before the domain ending, not the "
+                "words in front of it.")
+    return None
+
+
 # --- end of checks ---
 
 _CHECKS = (
@@ -272,6 +430,9 @@ _CHECKS = (
     ("SHORTENER", _check_shortener),
     ("CHAT_REDIRECT", _check_chat_redirect),
     ("APK_DOWNLOAD", _check_apk_download),
+    ("CLAIMED_COMPANY_MISMATCH", _check_claimed_company),
+    ("LOOKALIKE", _check_lookalike),
+    ("BRAND_IN_SUBDOMAIN", _check_brand_in_subdomain),
 )
 
 

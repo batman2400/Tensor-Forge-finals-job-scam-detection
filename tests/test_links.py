@@ -213,3 +213,129 @@ def test_two_flags_give_high_risk():
     r = one("Download https://bit.ly/earn.apk")
     assert codes(r) == ["SHORTENER", "APK_DOWNLOAD"]
     assert r["risk"] == "high"
+
+
+# ------------------------------------------------ company-based checks ----
+
+@pytest.fixture
+def mapping_path(monkeypatch):
+    """Point the module at another mapping file; restore cache afterwards."""
+    def use(path):
+        monkeypatch.setattr(links, "OFFICIAL_DOMAINS_PATH", Path(path))
+        links._official_domains.cache_clear()
+    yield use
+    monkeypatch.undo()
+    links._official_domains.cache_clear()
+
+
+def test_mapping_file_is_fictional_example_domains():
+    data = json.loads((REPO_ROOT / "data" / "official_domains.json").read_text())
+    assert data and all(d.endswith(".example") for d in data.values())
+    assert links.official_domains_available()
+
+
+@pytest.mark.parametrize("url", ["https://abcholdings.example/careers",
+                                 "https://careers.abcholdings.example/apply",
+                                 "WWW.ABCHOLDINGS.EXAMPLE"])
+def test_official_domain_and_genuine_subdomain_are_not_flagged(url):
+    r = one(url, "  abc   HOLDINGS ")
+    assert codes(r) == [] and r["risk"] == "low"
+
+
+def test_claimed_company_mismatch_is_high():
+    r = one("Pay the fee at https://abc-careers-pay.example/fee", "ABC Holdings")
+    assert codes(r)[0] == "CLAIMED_COMPANY_MISMATCH"
+    assert r["risk"] == "high"
+    assert "abcholdings.example" in r["flags"][0]["reason"]
+
+
+@pytest.mark.parametrize("url", ["https://abcholdings.example.evil.example/login",
+                                 "https://notabcholdings.example/login",
+                                 "https://abcholdingsexample.example/"])
+def test_deceptive_boundaries_are_not_official(url):
+    r = one(url, "ABC Holdings")
+    assert "CLAIMED_COMPANY_MISMATCH" in codes(r)
+
+
+def test_brand_in_subdomain_of_other_domain():
+    r = one("https://abcholdings.example.evil.example/login")
+    assert "BRAND_IN_SUBDOMAIN" in codes(r)
+    r = one("https://abcholdings.careers-portal.example/")
+    assert codes(r) == ["BRAND_IN_SUBDOMAIN"]
+
+
+def test_brand_as_hyphen_token_and_squashed_name():
+    assert codes(one("https://abcholdings-careers.example/")) == ["BRAND_IN_SUBDOMAIN"]
+    assert "BRAND_IN_SUBDOMAIN" in codes(one("lankatalentpartners.jobs-desk.example/x"))
+    assert "BRAND_IN_SUBDOMAIN" in codes(one("https://abcholdings.com.lk/"))
+
+
+def test_brand_substring_in_registrable_label_is_not_brand_flag():
+    # Documented limitation: only hyphen tokens / whole label are checked.
+    assert "BRAND_IN_SUBDOMAIN" not in codes(one("https://notabcholdings.example/"))
+
+
+@pytest.mark.parametrize("url,label", [("https://abcho1dings.example/apply", "abcho1dings"),
+                                       ("https://kandytec.example/", "kandytec"),
+                                       ("https://serendib-logistics.example/", "serendib-logistics"),
+                                       ("https://lankatalent.com.lk/", None)])
+def test_lookalike(url, label):
+    r = one(url)
+    if label is None:  # same label, different suffix: brand flag, distance 0
+        assert "LOOKALIKE" not in codes(r) and "BRAND_IN_SUBDOMAIN" in codes(r)
+    else:
+        assert "LOOKALIKE" in codes(r)
+        assert label in r["flags"][codes(r).index("LOOKALIKE")]["reason"]
+
+
+def test_lookalike_ignores_suffix_only_and_short_labels():
+    assert codes(one("https://random.example/")) == []
+    assert codes(one("https://abcd.example/")) == []
+    assert codes(one("https://zzzzzzzzzz.example/")) == []
+
+
+def test_lookalike_plus_mismatch_order():
+    r = one("Login https://abcho1dings.example/login", "ABC Holdings")
+    assert codes(r) == ["CLAIMED_COMPANY_MISMATCH", "LOOKALIKE"]
+    assert r["risk"] == "high"
+
+
+def test_unknown_claimed_company_is_skipped():
+    r = one("https://jobs-portal.example/apply", "Unknown Fictional Ltd")
+    assert codes(r) == []
+
+
+def test_levenshtein_implementation():
+    assert links._levenshtein("abcholdings", "abcho1dings") == 1
+    assert links._levenshtein("kitten", "sitting") == 3
+    assert links._levenshtein("", "abc") == 3
+
+
+def test_missing_mapping_skips_company_checks(mapping_path, tmp_path):
+    mapping_path(tmp_path / "does_not_exist.json")
+    assert not links.official_domains_available()
+    r = one("https://abcho1dings.example.evil.example/x", "ABC Holdings")
+    assert codes(r) == []
+    assert r["risk"] == "low"
+
+
+@pytest.mark.parametrize("content", ["{not json", "[1, 2, 3]", '{"ABC Holdings": 5}'])
+def test_invalid_mapping_skips_company_checks(mapping_path, tmp_path, content):
+    bad = tmp_path / "bad.json"
+    bad.write_text(content)
+    mapping_path(bad)
+    r = one("https://abcholdings-careers.example/", "ABC Holdings")
+    assert codes(r) == []
+    # non-company checks still work
+    assert codes(one("https://bit.ly/x", "ABC Holdings")) == ["SHORTENER"]
+
+
+def test_mapping_loaded_relative_to_module_from_other_cwd():
+    code = ("import sys, json; sys.path.insert(0, %r); "
+            "from scamshield.links import check_urls; "
+            "print(json.dumps(check_urls('https://abc-pay.example/x', 'ABC Holdings')))"
+            % str(REPO_ROOT))
+    out = subprocess.run([sys.executable, "-c", code], cwd="/tmp",
+                         capture_output=True, text=True, timeout=60, check=True)
+    res = json.loads(out.stdout)
+    assert res[0]["flags"][0]["code"] == "CLAIMED_COMPANY_MISMATCH"
