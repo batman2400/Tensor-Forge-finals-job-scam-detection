@@ -61,7 +61,27 @@ Flags (stable order = order of checks below)
 * ``IP_HOST``: host is an IPv4 or IPv6 address.
 * ``AT_SYMBOL``: ``@`` in the authority part (``http://brand.example@other.example/``).
 * ``SHORTENER``: host is a known link shortener (``SHORTENER_DOMAINS``).
-* ``CHAT_REDIRECT``: link opens a Telegram/WhatsApp chat (``CHAT_DOMAINS``).
+* ``CHAT_REDIRECT``: the link matches a known Telegram/WhatsApp *chat*
+  pattern (exact service host or ``www.`` + host; no other subdomains):
+
+  - Telegram (``t.me``, ``telegram.me``, ``telegram.dog``): ``/<username>``
+    (4-32 chars, may be followed by a message id), ``<username>.t.me``,
+    ``/+<invite>`` and ``/joinchat/<code>`` / ``/addlist/<slug>`` (invites),
+    ``/+<digits>`` (phone contact), ``/contact/<token>``, ``/m/<slug>``
+    (business chat), ``/c/<id>/...`` and ``/s/<channel>``.
+  - WhatsApp: ``wa.me/<6-15 digits>``, ``wa.me/message/<code>``,
+    ``wa.me/qr/<code>``, ``wa.me/c/<digits>``, ``chat.whatsapp.com/<code>``
+    (group invite), ``api|web.whatsapp.com/send?phone=<digits>``,
+    ``(api.)whatsapp.com/message/<code>``, ``whatsapp.com/channel/<id>``.
+  - Not flagged (deliberately): service home/legal/privacy/help/download
+    pages, ``faq.whatsapp.com``, ``wa.me/?text=`` (share sheet without a
+    recipient), ``send`` without a phone number, and Telegram non-chat paths
+    (``addstickers``, ``addtheme``, ``share``, ``proxy``, ``login``,
+    ``invoice``, ``setlanguage``, ...). ``tg://`` / ``whatsapp://`` app
+    schemes are not extracted at all.
+
+  The reason says whether it is a one-to-one contact, a group/channel
+  invitation, a public Telegram name or a WhatsApp channel.
 * ``APK_DOWNLOAD``: path ends with ``.apk`` or path/query mentions an
   ``.apk`` file (case-insensitive; fragment ignored). Path and query are
   checked raw and after one percent-decoding pass (depth 1), so
@@ -173,10 +193,22 @@ SHORTENER_DOMAINS = (
     "rb.gy", "shorturl.at", "tiny.cc", "buff.ly", "rebrand.ly", "s.id",
 )
 
-CHAT_DOMAINS = (
-    "t.me", "telegram.me", "telegram.dog", "wa.me", "chat.whatsapp.com",
-    "api.whatsapp.com", "whatsapp.com",
-)
+# Chat services whose *link patterns* are recognised (see _classify_chat).
+# Only exact hosts (or "www." + host) count; plus Telegram's <name>.t.me.
+TELEGRAM_HOSTS = ("t.me", "telegram.me", "telegram.dog")
+WHATSAPP_HOSTS = ("wa.me", "chat.whatsapp.com", "api.whatsapp.com",
+                  "web.whatsapp.com", "whatsapp.com")
+CHAT_DOMAINS = TELEGRAM_HOSTS + WHATSAPP_HOSTS
+
+# t.me first path segments that are NOT chats (stickers, themes, share sheet,
+# proxies, login codes, invoices, ...), from core.telegram.org/api/links.
+_TG_RESERVED = frozenset("""
+    addemoji addstickers addstyle addtheme auction auth bg boost call
+    confirmphone giftcode invoice iv login msg newbot nft oauth proxy
+    setlanguage share socks web a k z i dl
+""".split())
+_TG_USERNAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{3,31}")
+_DIGITS_RE = re.compile(r"[0-9]{6,15}")
 
 FREE_HOSTING_DOMAINS = (
     "wixsite.com", "blogspot.com", "sites.google.com", "forms.gle",
@@ -470,13 +502,102 @@ def _check_shortener(p: dict, ctx: dict) -> str | None:
     return None
 
 
+def _service_host(host: str, hosts) -> str | None:
+    for h in hosts:
+        if host == h or host == "www." + h:
+            return h
+    return None
+
+
+def _query_digits(query: str, key: str) -> bool:
+    for part in query.split("&"):
+        k, _, v = part.partition("=")
+        if k == key and _DIGITS_RE.fullmatch(v.lstrip("+")):
+            return True
+    return False
+
+
+def _classify_chat(p: dict) -> tuple[str, str] | None:
+    """Return (app, kind) for a recognised chat link, else None.
+
+    kind is "contact" (one-to-one chat), "invite" (private group/channel
+    invitation), "public" (Telegram public user/group/channel/bot name) or
+    "channel" (WhatsApp channel). Information pages (legal, privacy, help,
+    download, stickers, share sheet, ...) return None.
+    """
+    host = p["host"]
+    segs = [s for s in p["path"].split("/") if s]
+    first = segs[0] if segs else ""
+    tg = _service_host(host, TELEGRAM_HOSTS)
+    if tg is None and host.endswith(".t.me") and host.count(".") == 2:
+        name = host[:-5]
+        if (name != "www" and name not in _TG_RESERVED and name not in
+                ("joinchat", "addlist", "contact", "m", "s", "c")
+                and _TG_USERNAME_RE.fullmatch(name)):
+            return "Telegram", "public"
+        return None
+    if tg is not None:
+        rest = segs[1] if len(segs) > 1 else ""
+        low = first.lower()
+        if first.startswith("+") and len(first) > 1:
+            return ("Telegram", "contact") if first[1:].isdigit() else ("Telegram", "invite")
+        if low in ("joinchat", "addlist") and rest:
+            return "Telegram", "invite"
+        if low in ("contact", "m") and rest:
+            return "Telegram", "contact"
+        if low in ("c", "s") and rest:
+            return "Telegram", "public"
+        if low in _TG_RESERVED or low in ("joinchat", "addlist", "contact", "m", "c", "s"):
+            return None
+        if _TG_USERNAME_RE.fullmatch(first):
+            return "Telegram", "public"
+        return None
+    wa = _service_host(host, WHATSAPP_HOSTS)
+    if wa == "wa.me":
+        low = first.lower()
+        if _DIGITS_RE.fullmatch(first):
+            return "WhatsApp", "contact"
+        if low in ("message", "qr") and len(segs) > 1:
+            return "WhatsApp", "contact"
+        if low == "c" and len(segs) > 1 and _DIGITS_RE.fullmatch(segs[1]):
+            return "WhatsApp", "contact"
+        return None  # wa.me/?text=... only opens a share sheet
+    if wa == "chat.whatsapp.com":
+        code = segs[1] if first.lower() == "invite" and len(segs) > 1 else first
+        return ("WhatsApp", "invite") if re.fullmatch(r"[A-Za-z0-9]{6,}", code or "") else None
+    if wa in ("api.whatsapp.com", "web.whatsapp.com", "whatsapp.com"):
+        low = first.lower()
+        if low == "send" and _query_digits(p["query"], "phone"):
+            return "WhatsApp", "contact"
+        if low == "message" and len(segs) > 1:
+            return "WhatsApp", "contact"
+        if low == "channel" and len(segs) > 1:
+            return "WhatsApp", "channel"
+    return None
+
+
+_CHAT_REASONS = {
+    "contact": ("The link opens a private {app} chat with a specific phone number "
+                "or account ({host}). Real recruiters sometimes use {app}, but "
+                "moving a job conversation into a private chat is also a common "
+                "step in task-job scams, so confirm who you are talking to."),
+    "invite": ("The link is an invitation to join a private {app} group or "
+               "channel ({host}). Many genuine groups use invite links, but scam "
+               "'task groups' are often filled this way."),
+    "public": ("The link opens a {app} account, group, channel or bot ({host}). "
+               "This is not a problem by itself, but moving a job conversation "
+               "into a chat app is a common step in task-job scams."),
+    "channel": ("The link opens a {app} channel ({host}). Channels are used by "
+                "genuine organisations too, but check that it really belongs to "
+                "the employer."),
+}
+
+
 def _check_chat_redirect(p: dict, ctx: dict) -> str | None:
-    d = _match_any(p["host"], CHAT_DOMAINS)
-    if d:
-        app = "Telegram" if "telegram" in d or d == "t.me" else "WhatsApp"
-        return (f"The link opens a {app} chat or group ({d}); moving a job "
-                "conversation to a private chat app is a common pattern in "
-                "task-job scams.")
+    found = _classify_chat(p)
+    if found:
+        app, kind = found
+        return _CHAT_REASONS[kind].format(app=app, host=p["host"])
     return None
 
 

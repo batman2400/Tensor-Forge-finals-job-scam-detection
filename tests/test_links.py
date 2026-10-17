@@ -184,7 +184,7 @@ def test_shortener_requires_domain_boundary():
 
 @pytest.mark.parametrize("url", ["https://t.me/joinchat/AbCdEf", "wa.me/94770000000",
                                  "https://chat.whatsapp.com/InviteCode123",
-                                 "https://api.whatsapp.com/send?phone=0",
+                                 "https://api.whatsapp.com/send?phone=94770000000",
                                  "telegram.me/hr_desk"])
 def test_chat_redirect(url):
     r = one(f"Join {url} for tasks")
@@ -561,3 +561,47 @@ def test_encoded_apk_filenames_are_flagged(url):
                                  "https://downloads.example/task%252Eapk"])
 def test_apk_fragment_word_and_double_encoding_not_flagged(url):
     assert codes(one(url)) == []
+
+
+# ----------------------------------------- CHAT_REDIRECT path patterns ----
+
+@pytest.mark.parametrize("url,kind", [
+    ("https://wa.me/94770000000", "private WhatsApp chat"),
+    ("https://wa.me/94770000000?text=Hi", "private WhatsApp chat"),
+    ("https://wa.me/message/ABCDEFG1234", "private WhatsApp chat"),
+    ("https://wa.me/qr/ABCDEFG1234", "private WhatsApp chat"),
+    ("https://api.whatsapp.com/send?phone=94770000000&text=hi", "private WhatsApp chat"),
+    ("https://web.whatsapp.com/send?phone=+94770000000", "private WhatsApp chat"),
+    ("https://chat.whatsapp.com/AbCdEf123456", "join a private WhatsApp group"),
+    ("https://chat.whatsapp.com/invite/AbCdEf123456", "join a private WhatsApp group"),
+    ("https://www.whatsapp.com/channel/0029VaAbCdEf", "WhatsApp channel"),
+    ("https://t.me/+AbCdEfGhIjK", "join a private Telegram group"),
+    ("https://t.me/joinchat/AbCdEfGhIjK", "join a private Telegram group"),
+    ("https://t.me/addlist/AbCdEf", "join a private Telegram group"),
+    ("https://t.me/+94770000000", "private Telegram chat"),
+    ("https://t.me/contact/AbCdEf123", "private Telegram chat"),
+    ("https://t.me/hr_desk_lk", "Telegram account, group, channel or bot"),
+    ("https://telegram.me/hr_desk_lk/42", "Telegram account, group, channel or bot"),
+    ("https://telegram.dog/hr_desk_lk", "Telegram account, group, channel or bot"),
+    ("https://hrdesklk.t.me/", "Telegram account, group, channel or bot"),
+    ("https://t.me/s/lk_task_jobs", "Telegram account, group, channel or bot"),
+])
+def test_chat_redirect_patterns_and_wording(url, kind):
+    r = one(url)
+    assert codes(r) == ["CHAT_REDIRECT"]
+    assert kind in r["flags"][0]["reason"]
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.whatsapp.com/legal/privacy-policy", "https://whatsapp.com/download",
+    "https://faq.whatsapp.com/5913398998672934", "https://www.whatsapp.com/",
+    "https://wa.me/?text=Hello", "https://wa.me/", "https://api.whatsapp.com/send?text=hi",
+    "https://chat.whatsapp.com/", "https://t.me/", "https://t.me/addstickers/CatPack",
+    "https://t.me/share/url?url=https://portal.example", "https://t.me/proxy?server=x",
+    "https://t.me/setlanguage/si", "https://t.me/abc", "https://www.t.me/",
+    "https://blog.whatsapp.com/news", "https://business.whatsapp.com/products",
+    "https://addstickers.t.me/", "https://wa.me.evil.example/94770000000",
+    "https://t.me.evil.example/+AbCdEf", "https://notwa.me/94770000000",
+])
+def test_chat_service_information_pages_not_flagged(url):
+    assert "CHAT_REDIRECT" not in codes(one(url))
