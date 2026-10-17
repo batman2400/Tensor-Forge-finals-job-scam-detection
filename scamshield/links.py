@@ -58,6 +58,14 @@ Flags (stable order = order of checks below)
   under a different suffix (``abcholdings.com.lk``), while the host is not
   that company's official domain/subdomain. LOOKALIKE and
   BRAND_IN_SUBDOMAIN are independent: both fire if both conditions hold.
+* ``FREE_HOSTING_FORM``: host is a free site builder / form service
+  (``FREE_HOSTING_DOMAINS``; ``docs.google.com`` only when the path starts
+  with ``/forms``).
+* ``PUNYCODE``: any host label starts with ``xn--`` or the host contains
+  non-ASCII characters (the reason shows the ``xn--`` form when the IDNA
+  codec can encode it).
+* ``MANY_SUBDOMAINS``: the host has ``MANY_SUBDOMAINS_MIN_LABELS`` (5) or
+  more labels in total, e.g. ``a.b.c.d.example``.
 
 The three company checks need ``data/official_domains.json`` (loaded lazily
 from ``OFFICIAL_DOMAINS_PATH`` relative to this file, cached; see
@@ -73,6 +81,16 @@ Risk rule
 Count distinct flag codes (each check emits at most one flag):
 0 -> "low", 1 -> "medium", 2+ -> "high". ``IP_HOST`` or
 ``CLAIMED_COMPANY_MISMATCH`` alone already gives "high".
+
+Limitations
+-----------
+* Text rules only: no WHOIS/domain age, no reputation lists, no redirect
+  following, so a brand-new or compromised site may score "low".
+* The public-suffix handling is a small built-in list, not the full PSL.
+* Bare domains need a TLD from ``KNOWN_TLDS`` (or a ``www.`` prefix).
+* Brand detection inside a registrable label only matches whole hyphen
+  tokens (``notabcholdings.example`` is caught only by
+  ``CLAIMED_COMPANY_MISMATCH`` when a company is claimed).
 """
 
 from __future__ import annotations
@@ -84,7 +102,8 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-__all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH"]
+__all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH",
+           "FLAG_CODES"]
 
 #: Company -> official domain mapping. Missing/invalid file => company checks
 #: (CLAIMED_COMPANY_MISMATCH, LOOKALIKE, BRAND_IN_SUBDOMAIN) are skipped.
@@ -93,6 +112,7 @@ OFFICIAL_DOMAINS_PATH = Path(__file__).resolve().parent.parent / "data" / "offic
 LOOKALIKE_MIN_LEN = 5
 LOOKALIKE_MAX_DISTANCE = 2
 BRAND_MIN_LEN = 5
+MANY_SUBDOMAINS_MIN_LABELS = 5
 
 # --------------------------------------------------------------------------
 # Constants
@@ -124,6 +144,12 @@ SHORTENER_DOMAINS = (
 CHAT_DOMAINS = (
     "t.me", "telegram.me", "telegram.dog", "wa.me", "chat.whatsapp.com",
     "api.whatsapp.com", "whatsapp.com",
+)
+
+FREE_HOSTING_DOMAINS = (
+    "wixsite.com", "blogspot.com", "sites.google.com", "forms.gle",
+    "weebly.com", "netlify.app", "github.io", "000webhostapp.com",
+    "forms.office.com", "typeform.com", "jotform.com",
 )
 
 _APK_RE = re.compile(r"\.apk(?![a-z0-9])", re.IGNORECASE)
@@ -422,6 +448,50 @@ def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
     return None
 
 
+def _check_free_hosting(p: dict, ctx: dict) -> str | None:
+    host = p["host"]
+    d = _match_any(host, FREE_HOSTING_DOMAINS)
+    if d is None and _on_domain(host, "docs.google.com") and \
+            p["path"].lower().startswith("/forms"):
+        d = "docs.google.com/forms"
+    if d:
+        return (f"The link is on a free website or form service ({d}); "
+                "anyone can create these pages, and established employers "
+                "usually collect applications on their own domain.")
+    return None
+
+
+def _check_punycode(p: dict, ctx: dict) -> str | None:
+    host = p["host"]
+    labels = host.split(".")
+    if any(label.startswith("xn--") for label in labels):
+        return ("The website name uses an encoded international form "
+                f"('{host}'), which can display as letters that look like "
+                "a different, familiar name.")
+    if not host.isascii():
+        try:
+            encoded = host.encode("idna").decode("ascii")
+            shown = f" (encoded: {encoded})"
+        except (UnicodeError, ValueError):
+            shown = " (could not be converted to its encoded form)"
+        return ("The website name contains non-English characters"
+                f"{shown}; some of these look identical to normal letters "
+                "and can imitate a familiar name.")
+    return None
+
+
+def _check_many_subdomains(p: dict, ctx: dict) -> str | None:
+    host = p["host"]
+    if _is_ip(host):
+        return None
+    n = len(host.split("."))
+    if n >= MANY_SUBDOMAINS_MIN_LABELS:
+        return (f"The website name has {n} parts separated by dots "
+                f"(threshold {MANY_SUBDOMAINS_MIN_LABELS}); long chains of "
+                "subdomains can hide the real domain at the end.")
+    return None
+
+
 # --- end of checks ---
 
 _CHECKS = (
@@ -433,7 +503,13 @@ _CHECKS = (
     ("CLAIMED_COMPANY_MISMATCH", _check_claimed_company),
     ("LOOKALIKE", _check_lookalike),
     ("BRAND_IN_SUBDOMAIN", _check_brand_in_subdomain),
+    ("FREE_HOSTING_FORM", _check_free_hosting),
+    ("PUNYCODE", _check_punycode),
+    ("MANY_SUBDOMAINS", _check_many_subdomains),
 )
+
+#: Flag codes in the fixed order they appear in results.
+FLAG_CODES = tuple(code for code, _ in _CHECKS)
 
 
 def _risk(codes: list[str]) -> str:

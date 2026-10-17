@@ -339,3 +339,72 @@ def test_mapping_loaded_relative_to_module_from_other_cwd():
                          capture_output=True, text=True, timeout=60, check=True)
     res = json.loads(out.stdout)
     assert res[0]["flags"][0]["code"] == "CLAIMED_COMPANY_MISMATCH"
+
+
+# ------------------------------ FREE_HOSTING_FORM / PUNYCODE / MANY_SUB ----
+
+@pytest.mark.parametrize("url", ["https://abcjobs.wixsite.com/apply",
+                                 "https://lk-jobs.blogspot.com/",
+                                 "https://sites.google.com/view/jobs-lk",
+                                 "https://forms.gle/AbC123",
+                                 "https://docs.google.com/forms/d/e/xyz/viewform",
+                                 "https://jobsdesk.netlify.app/",
+                                 "https://hiring.github.io/",
+                                 "https://form.jotform.com/123"])
+def test_free_hosting_form(url):
+    assert "FREE_HOSTING_FORM" in codes(one(url))
+
+
+def test_google_docs_non_form_and_boundary_not_flagged():
+    assert "FREE_HOSTING_FORM" not in codes(one("https://docs.google.com/document/d/x"))
+    assert "FREE_HOSTING_FORM" not in codes(one("https://fakewixsite.com/x"))
+
+
+def test_brand_on_free_hosting_gives_two_flags():
+    r = one("https://abcholdings.github.io/careers")
+    assert codes(r) == ["BRAND_IN_SUBDOMAIN", "FREE_HOSTING_FORM"]
+    assert r["risk"] == "high"
+
+
+def test_punycode_xn_label():
+    r = one("https://xn--abchldings-abc.example/login")
+    assert "PUNYCODE" in codes(r)
+
+
+def test_non_ascii_host_is_punycode_and_lookalike():
+    r = one("Visit https://\u0430bcholdings.example/login today")  # Cyrillic a
+    assert r["host"] == "\u0430bcholdings.example"
+    assert codes(r) == ["LOOKALIKE", "PUNYCODE"]
+    assert "xn--" in r["flags"][1]["reason"]
+
+
+def test_many_subdomains_threshold():
+    assert "MANY_SUBDOMAINS" in codes(one("https://a.b.c.d.example/"))
+    assert "MANY_SUBDOMAINS" not in codes(one("https://a.b.c.example/"))
+
+
+def test_flag_order_is_fixed():
+    r = one("http://abcholdings.login.verify.secure.portal.example@198.51.100.7/app.apk")
+    assert codes(r) == ["IP_HOST", "AT_SYMBOL", "APK_DOWNLOAD"]
+    r = one("https://abcholdings.secure.login.verify.abcho1dings.example/x", "ABC Holdings")
+    assert codes(r) == ["CLAIMED_COMPANY_MISMATCH", "LOOKALIKE",
+                        "BRAND_IN_SUBDOMAIN", "MANY_SUBDOMAINS"]
+    order = list(links.FLAG_CODES)
+    assert order == ["IP_HOST", "AT_SYMBOL", "SHORTENER", "CHAT_REDIRECT",
+                     "APK_DOWNLOAD", "CLAIMED_COMPANY_MISMATCH", "LOOKALIKE",
+                     "BRAND_IN_SUBDOMAIN", "FREE_HOSTING_FORM", "PUNYCODE",
+                     "MANY_SUBDOMAINS"]
+
+
+def test_all_risk_levels_in_one_message():
+    text = ("Interview details: https://careers.abcholdings.example/slot . "
+            "Chat: https://t.me/abc_hr_desk . Pay: http://198.51.100.7/fee")
+    assert [r["risk"] for r in check_urls(text, "ABC Holdings")] == ["low", "high", "high"]
+    assert [r["risk"] for r in check_urls(text)] == ["low", "medium", "high"]
+
+
+def test_module_docstring_documents_every_flag():
+    doc = links.__doc__
+    assert "not" in doc and "safe" in doc
+    for code in links.FLAG_CODES:
+        assert code in doc
