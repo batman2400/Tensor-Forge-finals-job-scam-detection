@@ -515,3 +515,28 @@ def test_percent_encoded_unicode_host_still_punycode():
     r = one("https://%D0%B0bcholdings.example/login")  # Cyrillic a
     assert r["host"] == "\u0430bcholdings.example"
     assert codes(r) == ["LOOKALIKE", "PUNYCODE"]
+
+
+@pytest.mark.parametrize("sep", [",", ";", ", ", ";\n"])
+def test_punctuation_separated_urls_are_both_found(sep):
+    res = check_urls(f"https://abcholdings.example{sep}https://198.51.100.7/pay")
+    assert [r["url"] for r in res] == ["https://abcholdings.example",
+                                       "https://198.51.100.7/pay"]
+    assert res[0]["host"] == "abcholdings.example" and res[0]["risk"] == "low"
+    assert res[1]["host"] == "198.51.100.7"
+    assert "IP_HOST" in codes(res[1]) and res[1]["risk"] == "high"
+
+
+def test_rejected_candidate_does_not_swallow_next_url():
+    res = check_urls("http://bad_host!/x?u=https://198.51.100.7/pay")
+    assert [r["host"] for r in res] == ["198.51.100.7"]
+    res = check_urls("http://,https://bit.ly/x")
+    assert [r["host"] for r in res] == ["bit.ly"]
+
+
+def test_commas_semicolons_and_nested_url_in_query_are_kept():
+    text = ("Go https://portal.example/a,b;c?x=1,2;y=3&next=https://other.example/z "
+            "and (https://wiki.example/page_(info)), done.")
+    assert [r["url"] for r in check_urls(text)] == [
+        "https://portal.example/a,b;c?x=1,2;y=3&next=https://other.example/z",
+        "https://wiki.example/page_(info)"]

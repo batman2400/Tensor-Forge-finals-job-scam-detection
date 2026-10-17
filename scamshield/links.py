@@ -22,7 +22,11 @@ Surrounding punctuation ``( ) [ ] < > " ' , . ; : ! ?`` is stripped (a
 closing ``)`` is kept when it balances an ``(`` inside the URL). E-mail
 addresses (``hr@abc.example``), version numbers (``1.2.3``), ``e.g.`` and
 sentence fragments such as ``end.Next`` are not URLs. ``http://`` with no
-valid host is ignored.
+valid host is ignored. Explicit URLs glued together with ``,`` or ``;``
+(``https://a.example,https://b.example``) are split into separate
+links; if a candidate is invalid, any later ``http(s)://`` inside it is
+still examined. Commas and semicolons inside a path or query are kept, and
+``?next=https://...`` stays part of its link.
 
 Results are in first-appearance order and de-duplicated on a normalised
 key (scheme ignored; userinfo, host and port lowercased; trailing
@@ -368,26 +372,56 @@ def _accept_bare(parsed: dict, display: str) -> bool:
     return display.lower().startswith("www.") and tld.isalpha() and len(tld) >= 2
 
 
+# A new explicit URL starts right after one of these separators even when
+# there is no space ("a.example,https://b.example"). "=" is deliberately not
+# a separator, so "?next=https://portal.example" stays one link.
+_SCHEME_SPLIT_RE = re.compile(r"(?<=[,;])https?://", re.IGNORECASE)
+_SCHEME_ANYWHERE_RE = re.compile(r"https?://", re.IGNORECASE)
+
+
+def _scheme_candidates(chunk: str):
+    """Yield (display, parsed) for one scheme-regex match.
+
+    The match is split before every ``,https://`` and ``;https://``. If a piece is still not a valid URL, the search resumes at
+    the next ``http(s)://`` inside it, so a rejected candidate never hides a
+    later explicit URL.
+    """
+    starts = [0] + [m.start() for m in _SCHEME_SPLIT_RE.finditer(chunk)]
+    for a, b in zip(starts, starts[1:] + [len(chunk)]):
+        piece = chunk[a:b]
+        while piece:
+            display = _strip_trailing(piece)
+            parsed = _parse(display, True) if display else None
+            if parsed is not None:
+                yield display, parsed
+                break
+            nxt = _SCHEME_ANYWHERE_RE.search(piece, 1)
+            piece = piece[nxt.start():] if nxt else ""
+
+
+def _bare_candidates(chunk: str):
+    display = _strip_trailing(chunk)
+    parsed = _parse(display, False) if display else None
+    if parsed is not None and _accept_bare(parsed, display):
+        yield display, parsed
+
+
 def _extract(text: str) -> list[tuple[str, dict]]:
     found: list[tuple[str, dict]] = []
     seen: set[tuple] = set()
     for match in _URL_RE.finditer(text):
-        has_scheme = match.group("scheme") is not None
-        display = _strip_trailing(match.group(0))
-        if not display:
-            continue
-        parsed = _parse(display, has_scheme)
-        if parsed is None:
-            continue
-        if not has_scheme and not _accept_bare(parsed, display):
-            continue
-        path = parsed["path"] if parsed["path"] != "/" else ""
-        key = (parsed["userinfo"], parsed["host"], parsed["port"], path,
-               parsed["query"], parsed["fragment"])
-        if key in seen:
-            continue
-        seen.add(key)
-        found.append((display, parsed))
+        if match.group("scheme") is not None:
+            candidates = _scheme_candidates(match.group(0))
+        else:
+            candidates = _bare_candidates(match.group(0))
+        for display, parsed in candidates:
+            path = parsed["path"] if parsed["path"] != "/" else ""
+            key = (parsed["userinfo"], parsed["host"], parsed["port"], path,
+                   parsed["query"], parsed["fragment"])
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append((display, parsed))
     return found
 
 
