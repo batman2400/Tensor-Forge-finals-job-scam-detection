@@ -3,6 +3,7 @@
 Runs with ``python -m pytest tests/test_links.py`` from any directory.
 """
 
+import contextlib
 import json
 import socket
 import subprocess
@@ -659,3 +660,286 @@ def test_brand_and_many_subdomains_name_the_real_owner():
     assert "'abcholdings' (abcholdings.example)" in r["flags"][0]["reason"]
     r = one("https://a.b.c.d.example/")
     assert "'d.example'" in r["flags"][0]["reason"]
+
+
+# ======================================================================
+# Frozen synthetic evaluation set (Step 4). Expectations were reviewed by
+# hand and describe the IDEAL output for each case. Cases marked
+# known_gap=True are honest misses of the current rules: they stay in the
+# set (xfail strict) and are counted in the evaluation report.
+# Risk is not stored: it is derived from the expected flags with the team
+# rule. This is a small hand-built set, NOT a measure of real-world
+# scam-detection accuracy. Run the report with:
+#     python tests/test_links.py --eval
+# ======================================================================
+
+IP, AT, SH, CH, APK = "IP_HOST", "AT_SYMBOL", "SHORTENER", "CHAT_REDIRECT", "APK_DOWNLOAD"
+MIS, LOOK, BRAND = "CLAIMED_COMPANY_MISMATCH", "LOOKALIKE", "BRAND_IN_SUBDOMAIN"
+FREE, PUNY, MANY = "FREE_HOSTING_FORM", "PUNYCODE", "MANY_SUBDOMAINS"
+ABC = "ABC Holdings"
+
+# (id, group, text, claimed_company, mapping, [(url, host, [flags])], why, known_gap)
+EVAL_CASES = [
+    # --- A: ordinary recruiting links / official domains -------------------
+    ("A1", "official", "Interview link: https://careers.abcholdings.example/interview?id=7", ABC, None,
+     [("https://careers.abcholdings.example/interview?id=7", "careers.abcholdings.example", [])],
+     "genuine subdomain of the mapped official domain", False),
+    ("A2", "official", "Apply at https://kandytech.example/careers/se-intern.", "Kandy Tech Solutions", None,
+     [("https://kandytech.example/careers/se-intern", "kandytech.example", [])],
+     "exact official domain; trailing full stop is not part of the URL", False),
+    ("A3", "official", "Jobs: www.lankatalent.example/jobs", "lanka  talent PARTNERS", None,
+     [("www.lankatalent.example/jobs", "www.lankatalent.example", [])],
+     "www subdomain of official domain; company name case/space-insensitive", False),
+    ("A4", "official", "See https://jobs.example/listing/42 for details", None, None,
+     [("https://jobs.example/listing/42", "jobs.example", [])],
+     "ordinary link without any indicator", False),
+    ("A5", "official", "Our site is https://ABCHoldings.Example/ (official)", ABC, None,
+     [("https://ABCHoldings.Example/", "abcholdings.example", [])],
+     "mixed-case official host is normalised before comparison", False),
+    # --- B: hosted forms, chat links, service information pages ----------
+    ("B1", "forms-chat", "Fill https://forms.gle/AbCdEf123 to apply", None, None,
+     [("https://forms.gle/AbCdEf123", "forms.gle", [FREE])],
+     "hosted form: structural indicator even if the employer is genuine", False),
+    ("B2", "forms-chat", "Form: https://docs.google.com/forms/d/e/1FAIpQ/viewform", None, None,
+     [("https://docs.google.com/forms/d/e/1FAIpQ/viewform", "docs.google.com", [FREE])],
+     "docs.google.com counts only under /forms", False),
+    ("B3", "forms-chat", "Doc: https://docs.google.com/document/d/abc/edit", None, None,
+     [("https://docs.google.com/document/d/abc/edit", "docs.google.com", [])],
+     "ordinary document page is not a form", False),
+    ("B4", "forms-chat", "Message HR on https://wa.me/94770000000", None, None,
+     [("https://wa.me/94770000000", "wa.me", [CH])], "WhatsApp click-to-chat contact link", False),
+    ("B5", "forms-chat", "Join https://chat.whatsapp.com/AbCdEf123456 now", None, None,
+     [("https://chat.whatsapp.com/AbCdEf123456", "chat.whatsapp.com", [CH])], "WhatsApp group invite", False),
+    ("B6", "forms-chat", "Telegram: https://t.me/+AbCdEfGhIjK", None, None,
+     [("https://t.me/+AbCdEfGhIjK", "t.me", [CH])], "Telegram private invite", False),
+    ("B7", "forms-chat", "Privacy: https://www.whatsapp.com/legal/privacy-policy", None, None,
+     [("https://www.whatsapp.com/legal/privacy-policy", "www.whatsapp.com", [])],
+     "service legal page does not open a chat", False),
+    ("B8", "forms-chat", "Stickers https://t.me/addstickers/CatPack", None, None,
+     [("https://t.me/addstickers/CatPack", "t.me", [])], "Telegram sticker link is not a chat", False),
+    ("B9", "forms-chat", "Form https://forms.gle/AbCdEf123", "Ceylon Digital Careers", None,
+     [("https://forms.gle/AbCdEf123", "forms.gle", [MIS, FREE])],
+     "mapped company using a hosted form: mismatch by policy (no allowlist)", False),
+    ("B10", "forms-chat", "https://ceylondigital.wixsite.com/careers", "Ceylon Digital Careers", None,
+     [("https://ceylondigital.wixsite.com/careers", "ceylondigital.wixsite.com", [MIS, BRAND, FREE])],
+     "brand on a free site builder", False),
+    # --- C: brand names under other domains / near misses ----------------
+    ("C1", "brand", "https://abcholdings.careers-portal.example/apply", None, None,
+     [("https://abcholdings.careers-portal.example/apply", "abcholdings.careers-portal.example", [BRAND])],
+     "brand as subdomain of unrelated domain", False),
+    ("C2", "brand", "Register: https://abcholdings-careers.example/", ABC, None,
+     [("https://abcholdings-careers.example/", "abcholdings-careers.example", [MIS, BRAND])],
+     "brand as hyphen token", False),
+    ("C3", "brand", "Login https://abcho1dings.example/login", None, None,
+     [("https://abcho1dings.example/login", "abcho1dings.example", [LOOK])], "one-character look-alike", False),
+    ("C4", "brand", "https://kandytec.example/jobs", "Kandy Tech Solutions", None,
+     [("https://kandytec.example/jobs", "kandytec.example", [MIS, LOOK])], "look-alike plus claimed company", False),
+    ("C5", "brand", "https://abcholdings.example.verify-login.example/", None, None,
+     [("https://abcholdings.example.verify-login.example/", "abcholdings.example.verify-login.example", [BRAND])],
+     "official domain used as a prefix of another domain", False),
+    ("C6", "brand", "https://notabcholdings.example/", ABC, None,
+     [("https://notabcholdings.example/", "notabcholdings.example", [MIS, BRAND])],
+     "brand glued inside another label: mismatch fires, brand rule only matches hyphen tokens", True),
+    ("C7", "brand", "https://abc-holdings-careers.example/", None, None,
+     [("https://abc-holdings-careers.example/", "abc-holdings-careers.example", [BRAND])],
+     "brand split by hyphens is not recognised", True),
+    ("C8", "brand", "https://serendiblogistics.com.lk/", None, None,
+     [("https://serendiblogistics.com.lk/", "serendiblogistics.com.lk", [BRAND])],
+     "same brand label under a different suffix", False),
+    ("C9", "brand", "lankatalentpartners.jobs-desk.example/x", None, None,
+     [("lankatalentpartners.jobs-desk.example/x", "lankatalentpartners.jobs-desk.example", [BRAND])],
+     "squashed company name in subdomain (bare link)", False),
+    ("C10", "brand", "https://random-careers.example/", None, None,
+     [("https://random-careers.example/", "random-careers.example", [])], "no false look-alike", False),
+    # --- D: IP destinations ---------------------------------------------
+    ("D1", "ip", "http://198.51.100.7/pay", None, None,
+     [("http://198.51.100.7/pay", "198.51.100.7", [IP])], "dotted IPv4", False),
+    ("D2", "ip", "http://2130706433/pay", None, None,
+     [("http://2130706433/pay", "127.0.0.1", [IP])], "decimal integer IPv4", False),
+    ("D3", "ip", "http://0x7f000001/pay", None, None,
+     [("http://0x7f000001/pay", "127.0.0.1", [IP])], "hex IPv4", False),
+    ("D4", "ip", "http://%31%32%37.0.0.1/x", None, None,
+     [("http://%31%32%37.0.0.1/x", "127.0.0.1", [IP])], "percent-encoded IPv4", False),
+    ("D5", "ip", "https://[2001:db8::1]/x", None, None,
+     [("https://[2001:db8::1]/x", "2001:db8::1", [IP])], "bracketed IPv6", False),
+    ("D6", "ip", "http://4294967296/pay", None, None, [], "out-of-range number is not a host", False),
+    ("D7", "ip", "Version 1.2.3.4 released", None, None, [], "bare dotted number without path is a version", False),
+    # --- E: encoding, unicode, authority ambiguity -----------------------
+    ("E1", "encoded", "https://%65vil.example/login", ABC, None,
+     [("https://%65vil.example/login", "evil.example", [MIS])], "encoded host decoded once", False),
+    ("E2", "encoded", "https://%61bcholdings.example/", ABC, None,
+     [("https://%61bcholdings.example/", "abcholdings.example", [])], "encoded official host", False),
+    ("E3", "encoded", "https://downloads.example/task%2Eapk", None, None,
+     [("https://downloads.example/task%2Eapk", "downloads.example", [APK])], "encoded dot in apk name", False),
+    ("E4", "encoded", "https://downloads.example/get?file=task.%61pk", None, None,
+     [("https://downloads.example/get?file=task.%61pk", "downloads.example", [APK])], "encoded letter in query", False),
+    ("E5", "encoded", "https://downloads.example/page#task.apk", None, None,
+     [("https://downloads.example/page#task.apk", "downloads.example", [])], "fragment is not downloaded", False),
+    ("E6", "encoded", "https://xn--abchldings-abc.example/", None, None,
+     [("https://xn--abchldings-abc.example/", "xn--abchldings-abc.example", [PUNY])], "punycode label", False),
+    ("E7", "encoded", "https://\u0430bcholdings.example/", None, None,
+     [("https://\u0430bcholdings.example/", "\u0430bcholdings.example", [LOOK, PUNY])],
+     "Cyrillic letter imitating the brand", False),
+    ("E8", "encoded", r"https://evil.example\@abcholdings.example/login", ABC, None,
+     [(r"https://evil.example\@abcholdings.example/login", "evil.example", [MIS])],
+     "backslash ends the authority", False),
+    ("E9", "encoded", "https://abcholdings.example@evil.example/login", ABC, None,
+     [("https://abcholdings.example@evil.example/login", "evil.example", [AT, MIS])], "userinfo trick", False),
+    ("E10", "encoded", "http://login.example@198.51.100.7/", None, None,
+     [("http://login.example@198.51.100.7/", "198.51.100.7", [IP, AT])], "userinfo + IP", False),
+    ("E11", "encoded", "https://a.b.c.d.example/", None, None,
+     [("https://a.b.c.d.example/", "a.b.c.d.example", [MANY])], "five labels", False),
+    ("E12", "encoded", "https://downloads.example/task%252Eapk", None, None,
+     [("https://downloads.example/task%252Eapk", "downloads.example", [])],
+     "double encoding names a file 'task%2Eapk', not an .apk", False),
+    # --- F: several links, punctuation, duplicates, malformed -------------
+    ("F1", "text", "First https://bit.ly/3xYz then https://t.me/joinchat/AbCdEf and http://198.51.100.7/fee",
+     None, None,
+     [("https://bit.ly/3xYz", "bit.ly", [SH]), ("https://t.me/joinchat/AbCdEf", "t.me", [CH]),
+      ("http://198.51.100.7/fee", "198.51.100.7", [IP])], "three links in order", False),
+    ("F2", "text", "https://abcholdings.example,https://198.51.100.7/pay", None, None,
+     [("https://abcholdings.example", "abcholdings.example", []), ("https://198.51.100.7/pay", "198.51.100.7", [IP])],
+     "comma-glued links", False),
+    ("F3", "text", "(see https://wiki.example/page_(info)), ok", None, None,
+     [("https://wiki.example/page_(info)", "wiki.example", [])], "balanced parenthesis kept", False),
+    ("F4", "text", "Go https://ABC-Jobs.Example/apply. Again https://abc-jobs.example/apply!", None, None,
+     [("https://ABC-Jobs.Example/apply", "abc-jobs.example", [])], "duplicate removed", False),
+    ("F5", "text", "Contact hr@abcholdings.example e.g. tomorrow; v1.2.3; end.Next; http://", None, None, [],
+     "email, abbreviation, version, sentence fragment and empty scheme are not links", False),
+    ("F6", "text", "Apply at abc-jobs.example/apply, or www.jobs-lk.example.", None, None,
+     [("abc-jobs.example/apply", "abc-jobs.example", []), ("www.jobs-lk.example", "www.jobs-lk.example", [])],
+     "bare and www links", False),
+    ("F7", "text", "https://portal.example/a,b?x=1;y=2&next=https://other.example/z", None, None,
+     [("https://portal.example/a,b?x=1;y=2&next=https://other.example/z", "portal.example", [])],
+     "punctuation and nested URL inside one link", False),
+    ("F8", "text", "Links: https://good.example|https://198.51.100.7/pay", None, None,
+     [("https://good.example", "good.example", []), ("https://198.51.100.7/pay", "198.51.100.7", [IP])],
+     "pipe-glued links: only the second is recovered", True),
+    ("F9", "text", "Apply on careers.abcholdings.lk/apply", None, None,
+     [("careers.abcholdings.lk/apply", "careers.abcholdings.lk", [BRAND])], "brand under another TLD", False),
+    ("F10", "text", "", None, None, [], "empty text", False),
+    ("F11", "text", "Pay here: bit.ly/3xYzAbc.", None, None,
+     [("bit.ly/3xYzAbc", "bit.ly", [SH])], "bare shortener with trailing full stop", False),
+    # --- G: unknown company / mapping unavailable -------------------------
+    ("G1", "mapping", "https://jobs-portal.example/apply", "Unknown Fictional Ltd", None,
+     [("https://jobs-portal.example/apply", "jobs-portal.example", [])], "unknown company is skipped", False),
+    ("G2", "mapping", "https://abcho1dings.example/x", ABC, "missing",
+     [("https://abcho1dings.example/x", "abcho1dings.example", [])], "missing mapping: company checks skipped", False),
+    ("G3", "mapping", "https://abcholdings-careers.example/", ABC, "invalid",
+     [("https://abcholdings-careers.example/", "abcholdings-careers.example", [])], "invalid mapping", False),
+    ("G4", "mapping", "https://bit.ly/x", ABC, "missing",
+     [("https://bit.ly/x", "bit.ly", [SH])], "other checks still run without mapping", False),
+    ("G5", "mapping", "https://abcholdings.example/careers", "  abc   HOLDINGS ", None,
+     [("https://abcholdings.example/careers", "abcholdings.example", [])], "whitespace/case in company name", False),
+]
+
+
+def _derived_risk(flags):
+    if IP in flags or MIS in flags:
+        return "high"
+    return {0: "low", 1: "medium"}.get(len(set(flags)), "high")
+
+
+@contextlib.contextmanager
+def _mapping_mode(mode):
+    if mode is None:
+        yield
+        return
+    old = links.OFFICIAL_DOMAINS_PATH
+    links.OFFICIAL_DOMAINS_PATH = (REPO_ROOT / "data" / "__missing_mapping__.json"
+                                   if mode == "missing" else Path(__file__).resolve())
+    links._official_domains.cache_clear()
+    try:
+        yield
+    finally:
+        links.OFFICIAL_DOMAINS_PATH = old
+        links._official_domains.cache_clear()
+
+
+def _run_case(case):
+    _id, _g, text, company, mapping, _exp, _why, _gap = case
+    with _mapping_mode(mapping):
+        return check_urls(text, company)
+
+
+@pytest.mark.parametrize("case", [
+    pytest.param(c, id=c[0], marks=[pytest.mark.xfail(strict=True, reason="known gap: " + c[6])]
+                 if c[7] else []) for c in EVAL_CASES])
+def test_eval_case(case):
+    expected = [{"url": u, "host": h, "risk": _derived_risk(f), "flags": f} for u, h, f in case[5]]
+    actual = [{"url": r["url"], "host": r["host"], "risk": r["risk"], "flags": codes(r)}
+              for r in _run_case(case)]
+    assert actual == expected, case[6]
+
+
+def evaluate(cases=EVAL_CASES):
+    """Compute the evaluation report (extraction, hosts, flags, contract)."""
+    ext = {"expected": 0, "found": 0, "missed": 0, "spurious": 0}
+    hosts = {"compared": 0, "correct": 0}
+    per_flag = {c: {"tp": 0, "fp": 0, "fn": 0} for c in links.FLAG_CODES}
+    risk = {"compared": 0, "correct": 0}
+    exact, wrong = 0, []
+    contract = {"json_roundtrip": True, "deterministic": True, "schema": True,
+                "flag_order": True, "no_duplicates": True}
+    order = {c: i for i, c in enumerate(links.FLAG_CODES)}
+    for case in cases:
+        res = _run_case(case)
+        res2 = _run_case(case)
+        contract["deterministic"] &= res == res2
+        contract["json_roundtrip"] &= json.loads(json.dumps(res)) == res
+        for r in res:
+            contract["schema"] &= (set(r) == {"url", "host", "risk", "flags"}
+                                   and r["risk"] in ("low", "medium", "high")
+                                   and all(set(f) == {"code", "reason"} for f in r["flags"]))
+            idx = [order[c] for c in codes(r)]
+            contract["flag_order"] &= idx == sorted(set(idx))
+        contract["no_duplicates"] &= len({r["url"].lower() for r in res}) == len(res)
+        exp = {u: (h, f) for u, h, f in case[5]}
+        act = {r["url"]: r for r in res}
+        ext["expected"] += len(exp)
+        ext["found"] += len(exp.keys() & act.keys())
+        ext["missed"] += len(exp.keys() - act.keys())
+        ext["spurious"] += len(act.keys() - exp.keys())
+        for u, (h, f) in exp.items():
+            got = set(codes(act[u])) if u in act else set()
+            if u in act:
+                hosts["compared"] += 1
+                hosts["correct"] += act[u]["host"] == h
+                risk["compared"] += 1
+                risk["correct"] += act[u]["risk"] == _derived_risk(f)
+            for c in links.FLAG_CODES:
+                per_flag[c]["tp"] += c in f and c in got
+                per_flag[c]["fn"] += c in f and c not in got
+                per_flag[c]["fp"] += c not in f and c in got
+        for u in act.keys() - exp.keys():
+            for c in codes(act[u]):
+                per_flag[c]["fp"] += 1
+        ok = [(r["url"], r["host"], codes(r)) for r in res] == [(u, h, f) for u, h, f in case[5]]
+        exact += ok
+        if not ok:
+            wrong.append(case[0])
+    errors = 0
+    for bad in (None, 123, b"http://x.example", "\x00" * 10, "http://" * 500, "(" * 1000 + "a.example"):
+        try:
+            check_urls(bad)  # type: ignore[arg-type]
+        except Exception:  # noqa: BLE001
+            errors += 1
+    contract["no_exceptions_on_odd_input"] = errors == 0
+    for c, v in per_flag.items():
+        v["precision"] = round(v["tp"] / (v["tp"] + v["fp"]), 3) if v["tp"] + v["fp"] else None
+        v["recall"] = round(v["tp"] / (v["tp"] + v["fn"]), 3) if v["tp"] + v["fn"] else None
+    return {"cases": len(cases), "exact_correct": exact, "incorrect_cases": wrong,
+            "known_gaps": [c[0] for c in cases if c[7]], "extraction": ext, "hosts": hosts,
+            "risk": risk, "per_flag": per_flag, "contract": contract}
+
+
+def test_eval_report_is_consistent():
+    rep = evaluate()
+    print(json.dumps(rep, indent=1))
+    assert 40 <= rep["cases"] <= 60
+    assert sorted(rep["incorrect_cases"]) == sorted(rep["known_gaps"])
+    assert all(rep["contract"].values()), rep["contract"]
+
+
+if __name__ == "__main__" and "--eval" in sys.argv:
+    print(json.dumps(evaluate(), indent=1))
