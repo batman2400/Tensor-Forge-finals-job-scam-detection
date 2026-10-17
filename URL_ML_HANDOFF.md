@@ -4,7 +4,7 @@ Branch `url-ml`. Reviewed against `origin/main` at `84f59f9` (fetched 2026-10-17
 
 ## 1. Branch and reviewed base
 
-- **Branch:** `url-ml`. Code and tests are final at `8eca595`; the commit that adds this file revision is the branch HEAD (see `git log origin/url-ml -1`).
+- **Branch:** `url-ml`. Integration code is unchanged since `8eca595`. Later commits `82069d9`, `a136c08` and `7fa610c` add analysis and data-prep scripts and a test only (sections 8-9); the commit that adds this file revision is the branch HEAD (see `git log origin/url-ml -1`).
 - **History:**
   - `url-ml` was branched from `links` at `f9c7961`. It does **not** contain any `main` commits after `2b914af`.
   - The merge base with `origin/main` is `2b914af`.
@@ -75,7 +75,7 @@ Example: actual output of `analyze_links("apply https://abc-pay.example/x and ht
   - Login details before `@`, an e-mail address, or token-like query parameters.
   - Non-http(s) input, empty input or a non-string, invalid ports or hosts, or more than 1,000 URLs per batch.
 
-**Tests on `url-ml` at `8eca595`** (`python -m pytest -q -p no:cacheprovider tests`, from the repo root and from `/tmp`, same counts both times):
+**Tests on `url-ml`** (re-run at `f5e7be1`, which adds one PSL parser test: 371 passed, 3 xfailed on Python 3.13.5; 358 passed, 13 skipped, 3 xfailed without scikit-learn). Counts at `8eca595` (`python -m pytest -q -p no:cacheprovider tests`, from the repo root and from `/tmp`, same counts both times):
 
 | Environment | Result |
 |---|---|
