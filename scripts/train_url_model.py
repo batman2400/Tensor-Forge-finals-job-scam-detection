@@ -5,7 +5,7 @@ Uses the domain-grouped partitions written by prepare_url_data.py. The model
 test partition is scored once at the end. Prints/writes aggregated numbers
 only (no raw URLs). Artifacts are written outside git (artifacts/ is ignored).
 
-Threshold objective (precision-prioritised): the lowest threshold whose
+Threshold objective (precision-prioritised, default target 0.95): the lowest threshold whose
 validation precision >= --precision-target (maximises recall under that
 precision); if no threshold reaches the target, the max-F1 threshold.
 """
@@ -75,7 +75,7 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=DEFAULT_SEED)
     ap.add_argument("--max-features", type=int, default=2 ** 18)
     ap.add_argument("--C-grid", default="1,4,16")
-    ap.add_argument("--precision-target", type=float, default=0.99)
+    ap.add_argument("--precision-target", type=float, default=0.95)
     a = ap.parse_args(argv)
     d = Path(a.data)
     manifest = json.loads((d / "manifest.json").read_text())
@@ -106,6 +106,11 @@ def main(argv=None):
     t0 = time.perf_counter()
     ste = model.predict_proba(Xte)[:, col]
     test_pred_s = time.perf_counter() - t0
+    operating_points = []
+    for tgt in (0.90, 0.95, 0.99):
+        t_, obj_ = choose_threshold(yva, sva, tgt)
+        operating_points.append({"precision_target": tgt, "threshold": round(t_, 6), "objective": obj_,
+                                 "validation": metrics(yva, sva, t_), "test": metrics(yte, ste, t_)})
     version = f"urlml-lr-char35-{len(train)}-{time.strftime('%Y%m%d%H%M')}"
     report = {
         "model_version": version,
@@ -115,6 +120,7 @@ def main(argv=None):
         "C_grid": grid, "C": C,
         "vocab_size": len(model.named_steps["tfidf"].vocabulary_),
         "threshold": round(thr, 6), "threshold_objective": objective,
+        "operating_points_info_only": operating_points,
         "validation": metrics(yva, sva, thr),
         "test": metrics(yte, ste, thr),
         "timing": {"fit_seconds_chosen": round(fit_s, 2), "grid_search_seconds": round(search_s, 2),
