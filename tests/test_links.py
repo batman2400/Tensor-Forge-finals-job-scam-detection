@@ -605,3 +605,57 @@ def test_chat_redirect_patterns_and_wording(url, kind):
 ])
 def test_chat_service_information_pages_not_flagged(url):
     assert "CHAT_REDIRECT" not in codes(one(url))
+
+
+# --------------------------------------------- proportionate wording ----
+
+ALL_FLAG_SAMPLES = [
+    ("http://198.51.100.7/x", None), ("http://a.example@b.example/", None),
+    ("https://bit.ly/x", None), ("https://wa.me/94770000000", None),
+    ("https://f.example/a.apk", None), ("https://abc-pay.example/", "ABC Holdings"),
+    ("https://abcho1dings.example/", None), ("https://abcholdings.careers-portal.example/", None),
+    ("https://forms.gle/x", None), ("https://xn--abchldings-abc.example/", None),
+    ("https://\u0430bcholdings.example/", None), ("https://a.b.c.d.example/", None),
+]
+
+
+def test_reasons_never_claim_fraud_and_cover_every_flag():
+    seen = set()
+    for url, company in ALL_FLAG_SAMPLES:
+        for f in one(url, company)["flags"]:
+            seen.add(f["code"])
+            low = f["reason"].lower()
+            for banned in ("is a scam", "is fraud", "fraudulent", "is fake.", "definitely",
+                           "proves"):
+                assert banned not in low, (f["code"], f["reason"])
+    assert seen == set(links.FLAG_CODES)
+
+
+@pytest.mark.parametrize("url,word", [
+    ("https://forms.gle/x", "genuine employers use these too"),
+    ("https://xn--abchldings-abc.example/", "normal for non-english names"),
+    ("https://\u0430bcholdings.example/", "normal for some local-language sites"),
+    ("https://abcho1dings.example/", "can be a coincidence"),
+    ("https://a.b.c.d.example/", "large legitimate sites also use"),
+    ("https://bit.ly/x", "common in ordinary messages"),
+])
+def test_structural_flags_mention_legitimate_use(url, word):
+    assert any(word in f["reason"].lower() for f in one(url)["flags"])
+
+
+def test_mismatch_reason_is_a_comparison_not_an_accusation():
+    reason = one("https://jobs-platform.example/abc", "ABC Holdings")["flags"][0]["reason"]
+    assert "configured official domain is abcholdings.example" in reason
+    assert "destination is the website jobs-platform.example" in reason
+    assert "outside recruiting platforms or forms" in reason
+    assert "does not prove" in reason
+    ip_reason = one("http://198.51.100.7/x", "ABC Holdings")["flags"][1]["reason"]
+    assert "the IP address 198.51.100.7" in ip_reason
+
+
+def test_brand_and_many_subdomains_name_the_real_owner():
+    r = one("https://abcholdings.careers-portal.example/")
+    assert "'careers-portal.example'" in r["flags"][0]["reason"]
+    assert "'abcholdings' (abcholdings.example)" in r["flags"][0]["reason"]
+    r = one("https://a.b.c.d.example/")
+    assert "'d.example'" in r["flags"][0]["reason"]

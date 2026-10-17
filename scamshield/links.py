@@ -58,6 +58,10 @@ locally without any lookup:
 
 Flags (stable order = order of checks below)
 --------------------------------------------
+Every reason describes the observed property, why it matters, and (where
+relevant) that legitimate sites can show it too. No flag claims that a
+link, company or offer is fraudulent.
+
 * ``IP_HOST``: host is an IPv4 or IPv6 address.
 * ``AT_SYMBOL``: ``@`` in the authority part (``http://brand.example@other.example/``).
 * ``SHORTENER``: host is a known link shortener (``SHORTENER_DOMAINS``).
@@ -89,7 +93,10 @@ Flags (stable order = order of checks below)
 * ``CLAIMED_COMPANY_MISMATCH``: ``claimed_company`` maps (case-insensitive,
   whitespace-normalised name) to an official domain and the host is neither
   that domain nor a genuine subdomain. Skipped if the company is unknown or
-  the mapping is unavailable.
+  the mapping is unavailable. The reason is phrased as a comparison
+  (configured domain vs destination host) and notes that companies may use
+  outside recruiting platforms or forms; the team policy still rates it
+  "high". No domain is ever guessed from the company name.
 * ``LOOKALIKE``: the host's registrable label (the label just before the
   public suffix, e.g. ``abcho1dings`` in ``abcho1dings.example``;
   ``abc.com.lk`` -> ``abc`` via ``MULTI_PART_SUFFIXES``) is within
@@ -469,16 +476,20 @@ def _extract(text: str) -> list[tuple[str, dict]]:
 
 def _check_ip_host(p: dict, ctx: dict) -> str | None:
     if _is_ip(p["host"]):
-        return ("The link points to a raw IP address instead of a named "
-                "website; legitimate employers normally use a domain name.")
+        return (f"The link goes to a raw IP address ({p['host']}) instead of a "
+                "website name. Test or internal systems sometimes do this, but "
+                "public job sites almost always use a domain name, and an IP "
+                "address does not show who runs the site.")
     return None
 
 
 def _check_at_symbol(p: dict, ctx: dict) -> str | None:
     if p["has_at"]:
-        return ("The link contains '@' before the host, so everything before "
-                "'@' is treated as a user name, not the website; the real destination "
-                f"is '{p['host']}'. This trick can make a link look like another site.")
+        return ("The link has an '@' before the website name. Everything before "
+                "the '@' is treated as a login name, not as the website, so the "
+                f"browser actually goes to '{p['host']}'. This form is rarely "
+                "needed in normal links and can make a link look like it "
+                "belongs to another site.")
     return None
 
 
@@ -497,8 +508,9 @@ def _match_any(host: str, domains) -> str | None:
 def _check_shortener(p: dict, ctx: dict) -> str | None:
     d = _match_any(p["host"], SHORTENER_DOMAINS)
     if d:
-        return (f"Shortened link ({d}): the real destination is hidden until "
-                "it is opened.")
+        return (f"Shortened link ({d}): the final website is hidden until the "
+                "link is opened, so this check cannot see where it leads. "
+                "Shorteners are common in ordinary messages too.")
     return None
 
 
@@ -606,9 +618,10 @@ def _check_apk_download(p: dict, ctx: dict) -> str | None:
     # "%2Eapk" and ".%61pk" are caught; "%252Eapk" is not). Fragment ignored.
     texts = (p["path"], p["query"], unquote(p["path"]), unquote(p["query"]))
     if any(_APK_RE.search(t) for t in texts):
-        return ("The link appears to download an Android app file (.apk) "
-                "from outside an app store; such files can install unwanted "
-                "software.")
+        return ("The link appears to point to an Android app file (.apk) "
+                "outside an app store. Installing an app from a link can give "
+                "its maker access to your phone; a job application rarely "
+                "needs one.")
     return None
 
 
@@ -680,9 +693,14 @@ def _check_claimed_company(p: dict, ctx: dict) -> str | None:
         if name == wanted:
             if _on_domain(p["host"], domain):
                 return None
-            return (f"The chat claims to be from '{' '.join(claimed.split())}', whose "
-                    f"official domain is {domain}, but this link goes to "
-                    f"{p['host']}, which is a different domain.")
+            what = "IP address" if _is_ip(p["host"]) else "website"
+            return (f"Company-domain comparison: the chat names "
+                    f"'{' '.join(claimed.split())}', whose configured official "
+                    f"domain is {domain}; this link's destination is the {what} "
+                    f"{p['host']}, which is not that domain or one of its "
+                    "subdomains. Companies sometimes use outside recruiting "
+                    "platforms or forms, so this alone does not prove the link "
+                    "is fake; check it through the company's official website.")
     return None
 
 
@@ -703,9 +721,10 @@ def _check_lookalike(p: dict, ctx: dict) -> str | None:
         if 1 <= dist <= LOOKALIKE_MAX_DISTANCE:
             hits.append(domain)
     if hits:
-        return (f"The name '{label}' differs by only one or two characters "
-                f"from the official domain {', '.join(hits)}; look-alike "
-                "names are often used to imitate a known company.")
+        return (f"The site name '{label}' is one or two characters different "
+                f"from the configured official domain {', '.join(hits)}. This "
+                "can be a coincidence, but small spelling changes are a common "
+                "way to imitate a known company.")
     return None
 
 
@@ -724,13 +743,15 @@ def _check_brand_in_subdomain(p: dict, ctx: dict) -> str | None:
                   if len(t) >= BRAND_MIN_LEN}
         for tok in sorted(tokens):
             if any(tok in s for s in sub_squashed) or tok in label_tokens:
-                hits.append(domain)
+                hits.append(f"'{tok}' ({domain})")
                 break
     if hits:
-        return (f"The link uses a company name belonging to {', '.join(hits)} "
-                f"inside a different website ({host}); the real owner of a "
-                "link is the part just before the domain ending, not the "
-                "words in front of it.")
+        owner = f"{label}.{_suffix}" if _suffix else label
+        return (f"The company name {', '.join(hits)} appears inside a "
+                f"different website name ({host}). That site is controlled by "
+                f"whoever owns '{owner}', not necessarily the company; "
+                "recruiting platforms sometimes do this legitimately, so check "
+                "it on the company's official website.")
     return None
 
 
@@ -741,9 +762,10 @@ def _check_free_hosting(p: dict, ctx: dict) -> str | None:
             p["path"].lower().startswith("/forms"):
         d = "docs.google.com/forms"
     if d:
-        return (f"The link is on a free website or form service ({d}); "
-                "anyone can create these pages, and established employers "
-                "usually collect applications on their own domain.")
+        return (f"The link is on a free website or form service ({d}). Genuine "
+                "employers use these too, but anyone can create a page there, "
+                "so the page itself does not confirm who the employer is. Be "
+                "careful about entering personal or payment details.")
     return None
 
 
@@ -751,9 +773,10 @@ def _check_punycode(p: dict, ctx: dict) -> str | None:
     host = p["host"]
     labels = host.split(".")
     if any(label.startswith("xn--") for label in labels):
-        return ("The website name uses an encoded international form "
-                f"('{host}'), which can display as letters that look like "
-                "a different, familiar name.")
+        return ("The website name uses the encoded form of international "
+                f"letters ('{host}'). This is normal for non-English names, but "
+                "such letters can also look identical to a familiar English "
+                "name, so check the spelling carefully.")
     if not host.isascii():
         try:
             encoded = host.encode("idna").decode("ascii")
@@ -761,8 +784,9 @@ def _check_punycode(p: dict, ctx: dict) -> str | None:
         except (UnicodeError, ValueError):
             shown = " (could not be converted to its encoded form)"
         return ("The website name contains non-English characters"
-                f"{shown}; some of these look identical to normal letters "
-                "and can imitate a familiar name.")
+                f"{shown}. This is normal for some local-language sites, but "
+                "some of these letters look identical to English ones and can "
+                "imitate a familiar name.")
     return None
 
 
@@ -772,9 +796,11 @@ def _check_many_subdomains(p: dict, ctx: dict) -> str | None:
         return None
     n = len(host.split("."))
     if n >= MANY_SUBDOMAINS_MIN_LABELS:
-        return (f"The website name has {n} parts separated by dots "
-                f"(threshold {MANY_SUBDOMAINS_MIN_LABELS}); long chains of "
-                "subdomains can hide the real domain at the end.")
+        _sub, label, suffix = _split_registrable(host)
+        return (f"The website name has {n} dot-separated parts (threshold "
+                f"{MANY_SUBDOMAINS_MIN_LABELS}); the site is controlled by "
+                f"'{label}.{suffix}' at the end. Large legitimate sites also use "
+                "long names, but extra parts can push the real domain out of view.")
     return None
 
 
