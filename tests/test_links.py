@@ -144,11 +144,11 @@ def test_ip_and_at_symbol_combined_order():
 
 # ---------------------------------------------------------------- safety ----
 
-def test_works_from_another_cwd():
+def test_works_from_another_cwd(tmp_path):
     code = ("import sys, json; sys.path.insert(0, %r); "
             "from scamshield.links import check_urls; "
             "print(json.dumps(check_urls('http://198.51.100.7/x')))" % str(REPO_ROOT))
-    out = subprocess.run([sys.executable, "-c", code], cwd="/tmp",
+    out = subprocess.run([sys.executable, "-c", code], cwd=str(tmp_path),
                          capture_output=True, text=True, timeout=60, check=True)
     assert json.loads(out.stdout)[0]["risk"] == "high"
 
@@ -330,12 +330,12 @@ def test_invalid_mapping_skips_company_checks(mapping_path, tmp_path, content):
     assert codes(one("https://bit.ly/x", "ABC Holdings")) == ["SHORTENER"]
 
 
-def test_mapping_loaded_relative_to_module_from_other_cwd():
+def test_mapping_loaded_relative_to_module_from_other_cwd(tmp_path):
     code = ("import sys, json; sys.path.insert(0, %r); "
             "from scamshield.links import check_urls; "
             "print(json.dumps(check_urls('https://abc-pay.example/x', 'ABC Holdings')))"
             % str(REPO_ROOT))
-    out = subprocess.run([sys.executable, "-c", code], cwd="/tmp",
+    out = subprocess.run([sys.executable, "-c", code], cwd=str(tmp_path),
                          capture_output=True, text=True, timeout=60, check=True)
     res = json.loads(out.stdout)
     assert res[0]["flags"][0]["code"] == "CLAIMED_COMPANY_MISMATCH"
