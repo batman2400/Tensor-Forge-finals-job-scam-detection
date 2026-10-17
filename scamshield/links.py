@@ -34,6 +34,14 @@ Flags (stable order = order of checks below)
 --------------------------------------------
 * ``IP_HOST``: host is an IPv4 or IPv6 address.
 * ``AT_SYMBOL``: ``@`` in the authority part (``http://brand.example@other.example/``).
+* ``SHORTENER``: host is a known link shortener (``SHORTENER_DOMAINS``).
+* ``CHAT_REDIRECT``: link opens a Telegram/WhatsApp chat (``CHAT_DOMAINS``).
+* ``APK_DOWNLOAD``: path ends with ``.apk`` or path/query mentions an
+  ``.apk`` file (case-insensitive; fragment ignored).
+
+All domain lists match the exact host or a genuine subdomain on a label
+boundary (``host == d or host.endswith("." + d)``), so ``notbit.ly`` does
+not match ``bit.ly``.
 
 Risk rule
 ---------
@@ -71,6 +79,18 @@ MULTI_PART_SUFFIXES = frozenset(
     sch.lk com.au net.au org.au co.in co.nz com.sg com.my co.jp
     """.split()
 )
+
+SHORTENER_DOMAINS = (
+    "bit.ly", "tinyurl.com", "cutt.ly", "t.co", "goo.gl", "is.gd", "ow.ly",
+    "rb.gy", "shorturl.at", "tiny.cc", "buff.ly", "rebrand.ly", "s.id",
+)
+
+CHAT_DOMAINS = (
+    "t.me", "telegram.me", "telegram.dog", "wa.me", "chat.whatsapp.com",
+    "api.whatsapp.com", "whatsapp.com",
+)
+
+_APK_RE = re.compile(r"\.apk(?![a-z0-9])", re.IGNORECASE)
 
 _STRIP_TRAILING = set("()[]<>\"',.;:!?")
 
@@ -206,11 +226,52 @@ def _check_at_symbol(p: dict, ctx: dict) -> str | None:
     return None
 
 
+def _on_domain(host: str, domain: str) -> bool:
+    """True if host is ``domain`` or a genuine subdomain of it."""
+    return host == domain or host.endswith("." + domain)
+
+
+def _match_any(host: str, domains) -> str | None:
+    for d in domains:
+        if _on_domain(host, d):
+            return d
+    return None
+
+
+def _check_shortener(p: dict, ctx: dict) -> str | None:
+    d = _match_any(p["host"], SHORTENER_DOMAINS)
+    if d:
+        return (f"Shortened link ({d}): the real destination is hidden until "
+                "it is opened.")
+    return None
+
+
+def _check_chat_redirect(p: dict, ctx: dict) -> str | None:
+    d = _match_any(p["host"], CHAT_DOMAINS)
+    if d:
+        app = "Telegram" if "telegram" in d or d == "t.me" else "WhatsApp"
+        return (f"The link opens a {app} chat or group ({d}); moving a job "
+                "conversation to a private chat app is a common pattern in "
+                "task-job scams.")
+    return None
+
+
+def _check_apk_download(p: dict, ctx: dict) -> str | None:
+    if _APK_RE.search(p["path"]) or _APK_RE.search(p["query"]):
+        return ("The link appears to download an Android app file (.apk) "
+                "from outside an app store; such files can install unwanted "
+                "software.")
+    return None
+
+
 # --- end of checks ---
 
 _CHECKS = (
     ("IP_HOST", _check_ip_host),
     ("AT_SYMBOL", _check_at_symbol),
+    ("SHORTENER", _check_shortener),
+    ("CHAT_REDIRECT", _check_chat_redirect),
+    ("APK_DOWNLOAD", _check_apk_download),
 )
 
 

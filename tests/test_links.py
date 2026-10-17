@@ -162,3 +162,54 @@ def test_no_network_used(monkeypatch):
     res = check_urls("http://abcholdings.example@evil.example/ and https://portal.example",
                      "ABC Holdings")
     assert len(res) == 2
+
+
+# ------------------------------------- SHORTENER / CHAT_REDIRECT / APK ----
+
+@pytest.mark.parametrize("url", ["https://bit.ly/3xYzAbc", "tinyurl.com/abc123",
+                                 "https://cutt.ly/jobLK", "t.co/abc", "rb.gy/x1",
+                                 "https://shorturl.at/abc", "http://go.rebrand.ly/x"])
+def test_shortener(url):
+    r = one(f"Click {url} today")
+    assert codes(r) == ["SHORTENER"]
+    assert r["risk"] == "medium"
+
+
+def test_shortener_requires_domain_boundary():
+    r = one("https://notbit.ly/abc and nothing else")
+    assert "SHORTENER" not in codes(r)
+    r = one("https://bit.ly.evil.example/abc")
+    assert "SHORTENER" not in codes(r)
+
+
+@pytest.mark.parametrize("url", ["https://t.me/joinchat/AbCdEf", "wa.me/94770000000",
+                                 "https://chat.whatsapp.com/InviteCode123",
+                                 "https://api.whatsapp.com/send?phone=0",
+                                 "telegram.me/hr_desk"])
+def test_chat_redirect(url):
+    r = one(f"Join {url} for tasks")
+    assert codes(r) == ["CHAT_REDIRECT"]
+
+
+def test_chat_redirect_boundary():
+    r = one("https://chat.whatsapp.com.evil.example/x")
+    assert "CHAT_REDIRECT" not in codes(r)
+    r = one("https://beat.me.example/x")
+    assert "CHAT_REDIRECT" not in codes(r)
+
+
+@pytest.mark.parametrize("url", ["https://files.example/TaskApp.APK",
+                                 "https://files.example/get?file=earn.apk",
+                                 "files.example/dl/app.apk?v=2#top"])
+def test_apk_download(url):
+    assert "APK_DOWNLOAD" in codes(one(url))
+
+
+def test_apk_only_in_fragment_or_word_is_ignored():
+    assert codes(one("https://files.example/apkinfo#x.apk")) == []
+
+
+def test_two_flags_give_high_risk():
+    r = one("Download https://bit.ly/earn.apk")
+    assert codes(r) == ["SHORTENER", "APK_DOWNLOAD"]
+    assert r["risk"] == "high"
