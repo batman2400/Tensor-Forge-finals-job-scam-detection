@@ -408,3 +408,36 @@ def test_module_docstring_documents_every_flag():
     assert "not" in doc and "safe" in doc
     for code in links.FLAG_CODES:
         assert code in doc
+
+
+# ------------------------------------------- review regressions (fixes) ----
+
+def test_backslash_ends_authority_real_host_is_before_it():
+    r = one(r"https://evil.example\@abcholdings.example/login", "ABC Holdings")
+    assert r["url"] == r"https://evil.example\@abcholdings.example/login"
+    assert r["host"] == "evil.example"
+    assert "CLAIMED_COMPANY_MISMATCH" in codes(r)
+    assert "AT_SYMBOL" not in codes(r)
+    assert r["risk"] == "high"
+    assert all("'abcholdings.example' " not in f["reason"] for f in r["flags"])
+
+
+def test_backslash_at_in_path_of_official_domain():
+    r = one(r"https://abcholdings.example\@evil.example/login", "ABC Holdings")
+    assert r["host"] == "abcholdings.example"
+    assert "CLAIMED_COMPANY_MISMATCH" not in codes(r)
+    assert "AT_SYMBOL" not in codes(r)
+
+
+def test_plain_userinfo_trick_still_flagged():
+    r = one("https://abcholdings.example@evil.example/login", "ABC Holdings")
+    assert r["host"] == "evil.example"
+    assert codes(r)[:2] == ["AT_SYMBOL", "CLAIMED_COMPANY_MISMATCH"]
+    assert "'evil.example'" in r["flags"][0]["reason"]
+
+
+def test_backslash_in_query_is_not_rewritten():
+    r = one(r"https://portal.example/a\b?x=c\d#e\f")
+    assert r["host"] == "portal.example"
+    p = links._parse(r["url"], True)
+    assert (p["path"], p["query"], p["fragment"]) == ("/a/b", r"x=c\d", r"e\f")

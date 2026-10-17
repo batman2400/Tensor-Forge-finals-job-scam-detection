@@ -30,6 +30,14 @@ punctuation removed; a bare ``/`` path dropped). ``url`` keeps the text as
 written; ``host`` is lowercased with userinfo, port, IPv6 brackets and a
 trailing dot removed, and is what every check compares.
 
+Host parsing follows browser (WHATWG) rules for http/https, implemented
+locally without any lookup:
+
+* A backslash acts like ``/``: the authority (``userinfo@host:port``) ends
+  at the first ``/``, ``\\``, ``?`` or ``#``, and backslashes in the path
+  become ``/``. So ``https://evil.example\\@abcholdings.example/login``
+  goes to ``evil.example`` (the ``@`` is in the path, no ``AT_SYMBOL``).
+
 Flags (stable order = order of checks below)
 --------------------------------------------
 * ``IP_HOST``: host is an IPv4 or IPv6 address.
@@ -100,7 +108,6 @@ import ipaddress
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
 
 __all__ = ["check_urls", "official_domains_available", "OFFICIAL_DOMAINS_PATH",
            "FLAG_CODES"]
@@ -198,22 +205,48 @@ def _valid_hostname(host: str) -> bool:
     return all(_LABEL_RE.match(label) for label in host.split("."))
 
 
+_SCHEME_PREFIX_RE = re.compile(r"(https?):", re.IGNORECASE)
+_AUTHORITY_END_RE = re.compile(r"[/\\?#]")
+
+
+def _split_url(url: str) -> tuple[str, str, str, str, str] | None:
+    """Browser-style split of an http(s) URL: (scheme, authority, path, query, fragment).
+
+    Like the WHATWG URL parser for "special" schemes, a backslash counts as
+    a path separator: the authority ends at the first ``/``, ``\\``, ``?``
+    or ``#``, and backslashes in the *path* become ``/``. Query and fragment
+    are left untouched.
+    """
+    m = _SCHEME_PREFIX_RE.match(url)
+    if not m:
+        return None
+    scheme = m.group(1).lower()
+    rest = url[m.end():].lstrip("/\\")
+    end = _AUTHORITY_END_RE.search(rest)
+    authority, tail = (rest[:end.start()], rest[end.start():]) if end else (rest, "")
+    tail, _, fragment = tail.partition("#")
+    path, _, query = tail.partition("?")
+    return scheme, authority, path.replace("\\", "/"), query, fragment
+
+
 def _parse(display: str, has_scheme: bool) -> dict | None:
     """Split a candidate into parts; return None if it is not a usable URL."""
-    try:
-        parts = urlsplit(display if has_scheme else "http://" + display)
-    except ValueError:
+    split = _split_url(display if has_scheme else "http://" + display)
+    if split is None:
         return None
-    netloc = parts.netloc
-    userinfo, at, hostport = netloc.rpartition("@")
+    scheme, authority, path, query, fragment = split
+    userinfo, at, hostport = authority.rpartition("@")
     if hostport.startswith("["):
         end = hostport.find("]")
         if end == -1:
             return None
-        host, port = hostport[1:end], hostport[end + 1:].lstrip(":")
+        host, port = hostport[1:end], hostport[end + 1:]
+        if port and not (port.startswith(":") and port[1:].isdigit()):
+            return None
+        port = port[1:]
     else:
         host, sep, port = hostport.rpartition(":")
-        if not sep or not port.isdigit():
+        if not sep or not (port.isdigit() or port == ""):
             host, port = hostport, ""
     host = host.lower().rstrip(".")
     if not host:
@@ -221,15 +254,15 @@ def _parse(display: str, has_scheme: bool) -> dict | None:
     if not (_is_ip(host) or _valid_hostname(host)):
         return None
     return {
-        "scheme": parts.scheme.lower() if has_scheme else "",
-        "netloc": netloc,
+        "scheme": scheme if has_scheme else "",
+        "netloc": authority,
         "has_at": bool(at),
         "userinfo": userinfo.lower(),
         "host": host,
         "port": port,
-        "path": parts.path,
-        "query": parts.query,
-        "fragment": parts.fragment,
+        "path": path,
+        "query": query,
+        "fragment": fragment,
     }
 
 
