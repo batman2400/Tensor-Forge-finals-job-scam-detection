@@ -45,7 +45,10 @@ locally without any lookup:
   and shown as dotted quads: ``2130706433``, ``0x7f000001``, ``0177.0.0.1``
   and ``127.1`` all become ``127.0.0.1``. Each of 1-4 parts may be decimal,
   ``0x`` hex or leading-zero octal; out-of-range values are rejected (the
-  link is dropped), never wrapped. A host whose last label is numeric but
+  link is dropped), never wrapped. Each part is length-checked after
+  stripping leading zeros (at most 10 decimal, 8 hex or 11 octal significant
+  digits) before conversion, so huge numbers are rejected without errors;
+  leading zeros alone never make a part invalid. A host whose last label is numeric but
   is not a valid address is rejected. Bare links (no scheme) only accept
   conventional dotted-quad IPv4 such as ``198.51.100.7/login``.
 * Percent-encoded hosts are decoded exactly once, strictly (valid ``%XX``
@@ -301,28 +304,53 @@ def _ends_in_number(host: str) -> bool:
     return bool(_IPV4_PART_DEC.fullmatch(last) or _IPV4_PART_HEX.fullmatch(last))
 
 
+# Largest IPv4 value is 0xFFFFFFFF = 4294967295 = 0o37777777777, so after
+# leading zeros are removed a valid part never needs more digits than this.
+_IPV4_MAX_SIGNIFICANT = {16: 8, 8: 11, 10: 10}
+
+
+def _ipv4_part(part: str) -> int | None:
+    """Parse one IPv4 part (decimal, 0x-hex or 0-octal) without big ints.
+
+    Leading zeros are stripped first and the remaining significant digits are
+    length-checked BEFORE int() is called, so a 5,000-digit part is rejected
+    in O(n) without touching Python's int-conversion limit.
+    """
+    if _IPV4_PART_HEX.fullmatch(part):
+        base, digits = 16, part[2:]
+    elif len(part) > 1 and part.startswith("0"):
+        if not _IPV4_PART_OCT.fullmatch(part):
+            return None
+        base, digits = 8, part[1:]
+    elif _IPV4_PART_DEC.fullmatch(part):
+        base, digits = 10, part
+    else:
+        return None
+    digits = digits.lstrip("0") or "0"
+    if len(digits) > _IPV4_MAX_SIGNIFICANT[base]:
+        return None
+    try:
+        return int(digits, base)
+    except ValueError:  # defensive; the regexes already guarantee digits
+        return None
+
+
 def _parse_ipv4(host: str) -> str | None:
     """WHATWG IPv4 parser: 1-4 parts, each decimal, 0x-hex or 0-octal.
 
     All parts but the last must be <= 255; the last fills the remaining
-    bytes (< 256 ** (5 - parts)). Out-of-range values return None (the URL
-    is rejected), never wrapped. No resolver is involved.
+    bytes (< 256 ** (5 - parts)). Out-of-range or over-long values return
+    None (the URL is rejected), never wrapped. No resolver is involved.
     """
     parts = host.split(".")
     if len(parts) > 4:
         return None
     nums = []
     for part in parts:
-        if _IPV4_PART_HEX.fullmatch(part):
-            nums.append(int(part[2:] or "0", 16))
-        elif len(part) > 1 and part.startswith("0"):
-            if not _IPV4_PART_OCT.fullmatch(part):
-                return None
-            nums.append(int(part, 8))
-        elif _IPV4_PART_DEC.fullmatch(part):
-            nums.append(int(part))
-        else:
+        n = _ipv4_part(part)
+        if n is None:
             return None
+        nums.append(n)
     if any(n > 255 for n in nums[:-1]) or nums[-1] >= 256 ** (5 - len(nums)):
         return None
     value = nums[-1] + sum(n << (8 * (3 - i)) for i, n in enumerate(nums[:-1]))

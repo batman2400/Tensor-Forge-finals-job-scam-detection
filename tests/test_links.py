@@ -1040,3 +1040,37 @@ def test_demo_cases(name, text, company, host, flags):
     r = one(text, company)
     assert r["host"] == host and codes(r) == flags
     assert r["risk"] == _derived_risk(flags)
+
+
+# ------------------------------- round 3: bounded numeric IPv4 (Fix 1) ----
+
+@pytest.mark.parametrize("host", [
+    "1" * 5000, "0x" + "f" * 5000, "0" + "7" * 5000, "9" * 11, "0x1" + "0" * 8,
+    "0" + "4" * 12, "4294967296", "0x100000000", "040000000000", "1." + "1" * 5000,
+    "1.2.3." + "9" * 400, "0x" + "1" * 9 + ".0.0.1",
+])
+def test_oversized_numeric_hosts_rejected_without_error(host):
+    assert check_urls(f"http://{host}/pay") == []
+
+
+def test_reviewer_reproducer_and_following_link_still_found():
+    assert check_urls("http://" + "1" * 5000 + "/pay") == []
+    res = check_urls("http://" + "1" * 5000 + "/pay and then https://abc-jobs.example/apply "
+                     "and http://198.51.100.7/x", ABC)
+    assert [r["host"] for r in res] == ["abc-jobs.example", "198.51.100.7"]
+    assert codes(res[1])[0] == "IP_HOST"
+
+
+@pytest.mark.parametrize("host,canon", [
+    ("4294967295", "255.255.255.255"), ("0xffffffff", "255.255.255.255"),
+    ("037777777777", "255.255.255.255"), ("0" * 300 + "17700000001", "127.0.0.1"),
+    ("0x" + "0" * 300 + "7f000001", "127.0.0.1"), ("0" * 50 + "2130706433", "17.99.141.27"),
+    ("0" * 50 + "77777777777", None),
+    ("000127.0.0.1", "87.0.0.1"), ("127.0.0.1", "127.0.0.1"), ("127.1", "127.0.0.1"),
+])
+def test_numeric_boundaries_and_leading_zeros(host, canon):
+    res = check_urls(f"http://{host}/x")
+    if canon is None:  # octal value above 32 bits: rejected, not wrapped
+        assert res == []
+    else:
+        assert res[0]["host"] == canon and "IP_HOST" in codes(res[0])
