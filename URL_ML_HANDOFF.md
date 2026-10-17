@@ -56,11 +56,11 @@ Branch `url-ml`. Reviewed against `origin/main` at `84f59f9` (fetched 2026-10-17
 - If `predict_urls` itself raises, every entry becomes `unavailable` and the rules are kept.
 - It never changes rule risk, flags, conversation verdict, review routing, drift or training. There is no score fusion.
 
-Example (`enable_url_ml=True`, shipped artifact):
+Example: actual output of `analyze_links("apply https://abc-pay.example/x and http://secure-login-verify.top", "ABC Holdings", enable_url_ml=True)` on `url-ml` with the shipped artifact (reasons shortened):
 ```json
 {"links": [
    {"url": "https://abc-pay.example/x", "host": "abc-pay.example", "risk": "high", "flags": [{"code": "CLAIMED_COMPANY_MISMATCH", "reason": "..."}]},
-   {"url": "http://secure-login-verify.top", "host": "secure-login-verify.top", "risk": "low", "flags": []}],
+   {"url": "http://secure-login-verify.top", "host": "secure-login-verify.top", "risk": "high", "flags": [{"code": "CLAIMED_COMPANY_MISMATCH", "reason": "..."}]}],
  "url_ml": [
    {"url": "https://abc-pay.example/x", "host": "abc-pay.example", "status": "not_evaluated", "phishing_score": null, "above_threshold": null, "model_version": "urlml-lr-char35-168566-202610171216", "reason": "reserved demo domain (not evaluated)"},
    {"url": "http://secure-login-verify.top", "host": "secure-login-verify.top", "status": "scored", "phishing_score": 0.999749, "above_threshold": true, "model_version": "urlml-lr-char35-168566-202610171216", "reason": "URL text resembles phishing URLs in the training data"}]}
