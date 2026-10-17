@@ -47,9 +47,11 @@ def mapping(monkeypatch, tmp_path):
     links.reload_official_domains()
 
 
-def test_official_domains_importable_and_exported():
-    assert "official_domains" in links.__all__
-    assert callable(official_domains)
+def test_official_domains_importable():
+    # service.py imports it by name; __all__ membership is not required
+    # (origin/main's links.py does not list it there).
+    from scamshield.links import official_domains as od
+    assert callable(od) and od is links.official_domains
 
 
 def test_shipped_mapping_shape_matches_file():

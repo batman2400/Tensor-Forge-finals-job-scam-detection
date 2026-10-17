@@ -99,3 +99,27 @@ def test_disabled_works_without_sklearn_in_subprocess(tmp_path):
                        capture_output=True, text=True, timeout=60)
     assert p.returncode == 0, p.stderr
     assert p.stdout.strip() == "ok"
+
+
+def test_enabled_corrupt_artifact_keeps_rules(tmp_path):
+    (tmp_path / "url_model.joblib").write_bytes(b"not a model")
+    (tmp_path / "url_model_meta.json").write_text("{broken", encoding="utf-8")
+    from scamshield import url_ml
+    url_ml._CACHE.clear()
+    out = analyze_links(TEXT, enable_url_ml=True, model_dir=tmp_path)
+    assert out["links"] == check_urls(TEXT)
+    assert [m["status"] for m in out["url_ml"]] == ["unavailable", "not_evaluated"]
+    assert all(m["phishing_score"] is None for m in out["url_ml"])
+
+
+def test_multiple_links_one_to_one_in_order(tmp_path):
+    text = ("1) https://abc-holdings-careers.xyz/apply 2) http://198.51.100.7/pay "
+            "3) https://abcholdings.example/jobs 4) https://bit.ly/abc123 "
+            "5) https://abc-holdings-careers.xyz/apply")
+    rules = check_urls(text, "ABC Holdings")
+    out = analyze_links(text, "ABC Holdings", enable_url_ml=True, model_dir=tmp_path)
+    assert out["links"] == rules
+    assert len(out["url_ml"]) == len(rules) >= 4
+    assert [m["url"] for m in out["url_ml"]] == [r["url"] for r in rules]
+    assert [m["host"] for m in out["url_ml"]] == [r["host"] for r in rules]
+    assert all(m["status"] in ("unavailable", "not_evaluated") for m in out["url_ml"])
